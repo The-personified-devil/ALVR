@@ -12,6 +12,7 @@ mod sockets;
 mod statistics;
 mod tracking;
 mod web_server;
+mod monado;
 
 #[allow(
     non_camel_case_types,

@@ -8,6 +8,7 @@ class FrameRender : public Renderer
 {
 public:
     explicit FrameRender(alvr::VkContext &ctx, init_packet &init, int fds[]);
+    explicit FrameRender(alvr::VkContext &ctx, init_packet &init);
     ~FrameRender();
 
     Output CreateOutput();

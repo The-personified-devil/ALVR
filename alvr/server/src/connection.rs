@@ -69,12 +69,17 @@ fn align32(value: f32) -> u32 {
 }
 
 fn is_streaming(client_hostname: &str) -> bool {
-    SERVER_DATA_MANAGER
+    info!("server data manager before is_streaming");
+    info!("{}", SERVER_DATA_MANAGER.is_locked());
+
+    let a = SERVER_DATA_MANAGER
         .read()
         .client_list()
         .get(client_hostname)
         .map(|c| c.connection_state == ConnectionState::Streaming)
-        .unwrap_or(false)
+        .unwrap_or(false);
+    info!("server data manager after is_streaming");
+    a
 }
 
 pub fn contruct_openvr_config(session: &SessionConfig) -> OpenvrConfig {
@@ -245,6 +250,7 @@ pub fn handshake_loop() {
     while *LIFECYCLE_STATE.write() != LifecycleState::ShuttingDown {
         let available_manual_client_ips = {
             let mut manual_client_ips = HashMap::new();
+            info!("server data manager before handshake_loop");
             for (hostname, connection_info) in SERVER_DATA_MANAGER
                 .read()
                 .client_list()
@@ -255,6 +261,7 @@ pub fn handshake_loop() {
                     manual_client_ips.insert(*ip, hostname.clone());
                 }
             }
+            info!("server data manager after handshake_loop");
             manual_client_ips
         };
 
@@ -265,12 +272,14 @@ pub fn handshake_loop() {
             continue;
         }
 
+        info!("server data manager before disc_config");
         let discovery_config = SERVER_DATA_MANAGER
             .read()
             .settings()
             .connection
             .client_discovery
             .clone();
+        info!("server data manager after disc_config");
         if let Switch::Enabled(config) = discovery_config {
             let clients = match welcome_socket.recv_all() {
                 Ok(clients) => clients,
@@ -289,6 +298,7 @@ pub fn handshake_loop() {
 
             for (client_hostname, client_ip) in clients {
                 let trusted = {
+                    info!("server data manager before");
                     let mut data_manager = SERVER_DATA_MANAGER.write();
 
                     data_manager.update_client_list(
@@ -304,14 +314,17 @@ pub fn handshake_loop() {
                             .update_client_list(client_hostname.clone(), ClientListAction::Trust);
                     }
 
-                    data_manager
+                    let a = data_manager
                         .client_list()
                         .get(&client_hostname)
                         .map(|c| c.trusted)
-                        .unwrap_or(false)
+                        .unwrap_or(false);
+                    info!("server data manager after");
+                    a
                 };
 
                 // do not attempt connection if the client is already connected
+                info!("before already connected");
                 if trusted
                     && SERVER_DATA_MANAGER
                         .read()
@@ -326,6 +339,7 @@ pub fn handshake_loop() {
                         error!("Could not initiate connection for {client_hostname}: {e}");
                     }
                 }
+                info!("after already connected");
 
                 thread::sleep(RETRY_CONNECT_MIN_INTERVAL);
             }
@@ -364,9 +378,11 @@ fn try_connect(mut client_ips: HashMap<IpAddr, String>) -> ConResult {
         } else {
             ClientListAction::SetConnectionState(ConnectionState::Disconnected)
         };
+        info!("before update_client_list");
         SERVER_DATA_MANAGER
             .write()
             .update_client_list(client_hostname, action);
+        info!("after update_client_list");
     }));
 
     Ok(())
@@ -379,6 +395,7 @@ fn connection_pipeline(
 ) -> ConResult {
     // This session lock will make sure settings cannot be changed while connecting and no other
     // client can connect (until handshake is finished)
+    info!("before connection_pipeline");
     let mut server_data_lock = SERVER_DATA_MANAGER.write();
 
     server_data_lock.update_client_list(
@@ -389,6 +406,7 @@ fn connection_pipeline(
         client_hostname.clone(),
         ClientListAction::UpdateCurrentIp(Some(client_ip)),
     );
+    info!("updated client list");
 
     let disconnect_notif = Arc::new(Condvar::new());
 
@@ -401,6 +419,8 @@ fn connection_pipeline(
         }
         Err(e) => return Err(e),
     };
+
+    info!("got connection result");
 
     let maybe_streaming_caps = if let ClientConnectionResult::ConnectionAccepted {
         client_protocol_id,
@@ -429,6 +449,8 @@ fn connection_pipeline(
         debug!("Found client in standby. Retrying");
         return Ok(());
     };
+
+    info!("streaming caps");
 
     let streaming_caps = if let Some(streaming_caps) = maybe_streaming_caps {
         alvr_packets::decode_video_streaming_capabilities(&streaming_caps).to_con()?
@@ -465,6 +487,8 @@ fn connection_pipeline(
         settings.video.emulated_headset_view_resolution,
         streaming_caps.default_view_resolution,
     );
+
+    info!("got res");
 
     let fps = {
         let mut best_match = 0_f32;
@@ -543,6 +567,8 @@ fn connection_pipeline(
         settings.video.preferred_codec
     };
 
+    info!("got codec");
+
     let game_audio_sample_rate =
         if let Switch::Enabled(game_audio_config) = &settings.audio.game_audio {
             let game_audio_device = AudioDevice::new_output(
@@ -582,6 +608,8 @@ fn connection_pipeline(
     .to_con()?;
     proto_socket.send(&stream_config_packet).to_con()?;
 
+    info!("sent config packet");
+
     let (mut control_sender, mut control_receiver) =
         proto_socket.split(STREAMING_RECV_TIMEOUT).to_con()?;
 
@@ -599,14 +627,16 @@ fn connection_pipeline(
     if server_data_lock.session().openvr_config != new_openvr_config {
         server_data_lock.session_mut().openvr_config = new_openvr_config;
 
-        control_sender.send(&ServerControlPacket::Restarting).ok();
+        // control_sender.send(&ServerControlPacket::Restarting).ok();
 
-        crate::notify_restart_driver();
+        // crate::notify_restart_driver();
     }
 
     control_sender
         .send(&ServerControlPacket::StartStream)
         .to_con()?;
+
+    info!("control sender");
 
     let signal = control_receiver.recv(HANDSHAKE_ACTION_TIMEOUT)?;
     if !matches!(signal, ClientControlPacket::StreamReady) {
@@ -635,9 +665,11 @@ fn connection_pipeline(
         settings.connection.packet_size as _,
     )?;
 
+    info!("stream socket");
+
     let mut video_sender = stream_socket.request_stream(VIDEO);
-    let game_audio_sender = stream_socket.request_stream(AUDIO);
-    let mut microphone_receiver = stream_socket.subscribe_to_stream(AUDIO, MAX_UNREAD_PACKETS);
+    // let game_audio_sender = stream_socket.request_stream(AUDIO);
+    // let mut microphone_receiver = stream_socket.subscribe_to_stream(AUDIO, MAX_UNREAD_PACKETS);
     let mut tracking_receiver =
         stream_socket.subscribe_to_stream::<Tracking>(TRACKING, MAX_UNREAD_PACKETS);
     let haptics_sender = stream_socket.request_stream(HAPTICS);
@@ -659,6 +691,7 @@ fn connection_pipeline(
                         Err(RecvTimeoutError::Timeout) => continue,
                         Err(RecvTimeoutError::Disconnected) => return,
                     };
+                info!("received video, sending");
 
                 let mut buffer = video_sender.get_buffer(&header).unwrap();
                 // todo: make encoder write to socket buffers directly to avoid copy
@@ -669,6 +702,8 @@ fn connection_pipeline(
             }
         }
     });
+
+    info!("video send thread");
 
     let game_audio_thread = if let Switch::Enabled(config) = settings.audio.game_audio {
         let client_hostname = client_hostname.clone();
@@ -700,18 +735,18 @@ fn connection_pipeline(
                     continue;
                 };
 
-                if let Err(e) = alvr_audio::record_audio_blocking(
-                    Arc::new({
-                        let client_hostname = client_hostname.clone();
-                        move || is_streaming(&client_hostname)
-                    }),
-                    game_audio_sender.clone(),
-                    &device,
-                    2,
-                    config.mute_when_streaming,
-                ) {
-                    error!("Audio record error: {e:?}");
-                }
+                // if let Err(e) = alvr_audio::record_audio_blocking(
+                //     Arc::new({
+                //         let client_hostname = client_hostname.clone();
+                //         move || is_streaming(&client_hostname)
+                //     }),
+                //     game_audio_sender.clone(),
+                //     &device,
+                //     2,
+                //     config.mute_when_streaming,
+                // ) {
+                //     error!("Audio record error: {e:?}");
+                // }
 
                 #[cfg(windows)]
                 if let Ok(id) = AudioDevice::new_output(None, None)
@@ -754,56 +789,62 @@ fn connection_pipeline(
 
         let client_hostname = client_hostname.clone();
         thread::spawn(move || {
-            alvr_common::show_err(alvr_audio::play_audio_loop(
-                {
-                    let client_hostname = client_hostname.clone();
-                    move || is_streaming(&client_hostname)
-                },
-                &sink,
-                1,
-                streaming_caps.microphone_sample_rate,
-                config.buffering,
-                &mut microphone_receiver,
-            ));
+            // alvr_common::show_err(alvr_audio::play_audio_loop(
+            //     {
+            //         let client_hostname = client_hostname.clone();
+            //         move || is_streaming(&client_hostname)
+            //     },
+            //     &sink,
+            //     1,
+            //     streaming_caps.microphone_sample_rate,
+            //     config.buffering,
+            //     &mut microphone_receiver,
+            // ));
         })
     } else {
         thread::spawn(|| ())
     };
 
+    info!("audio threads");
+
     let tracking_manager = Arc::new(Mutex::new(TrackingManager::new()));
     let hand_gesture_manager = Arc::new(Mutex::new(HandGestureManager::new()));
 
+    info!("before tracking");
+
     let tracking_receive_thread = thread::spawn({
         let tracking_manager = Arc::clone(&tracking_manager);
-        let hand_gesture_manager = Arc::clone(&hand_gesture_manager);
+        // let hand_gesture_manager = Arc::clone(&hand_gesture_manager);
 
-        let mut gestures_button_mapping_manager =
-            settings.headset.controllers.as_option().map(|config| {
-                ButtonMappingManager::new_automatic(
-                    &HAND_GESTURE_BUTTON_SET,
-                    &config.button_mapping_config,
-                )
-            });
+        // let mut gestures_button_mapping_manager =
+        //     settings.headset.controllers.as_option().map(|config| {
+        //         ButtonMappingManager::new_automatic(
+        //             &HAND_GESTURE_BUTTON_SET,
+        //             &config.button_mapping_config,
+        //         )
+        //     });
 
         let client_hostname = client_hostname.clone();
+        info!("create track thread soon");
         move || {
-            let mut face_tracking_sink =
-                settings
-                    .headset
-                    .face_tracking
-                    .into_option()
-                    .and_then(|config| {
-                        FaceTrackingSink::new(config.sink, settings.connection.osc_local_port).ok()
-                    });
+            info!("in track thread");
+            // let mut face_tracking_sink =
+            //     settings
+            //         .headset
+            //         .face_tracking
+            //         .into_option()
+            //         .and_then(|config| {
+            //             FaceTrackingSink::new(config.sink, settings.connection.osc_local_port).ok()
+            //         });
 
-            let mut body_tracking_sink =
-                settings
-                    .headset
-                    .body_tracking
-                    .into_option()
-                    .and_then(|config| {
-                        BodyTrackingSink::new(config.sink, settings.connection.osc_local_port).ok()
-                    });
+            // let mut body_tracking_sink =
+            //     settings
+            //         .headset
+            //         .body_tracking
+            //         .into_option()
+            //         .and_then(|config| {
+            //             BodyTrackingSink::new(config.sink, settings.connection.osc_local_port).ok()
+            //         });
 
             while is_streaming(&client_hostname) {
                 let data = match tracking_receiver.recv(STREAMING_RECV_TIMEOUT) {
@@ -815,25 +856,27 @@ fn connection_pipeline(
                     return;
                 };
 
-                let controllers_config = {
-                    let data_lock = SERVER_DATA_MANAGER.read();
-                    data_lock
-                        .settings()
-                        .headset
-                        .controllers
-                        .clone()
-                        .into_option()
-                };
+                // let controllers_config = {
+                //     let data_lock = SERVER_DATA_MANAGER.read();
+                //     data_lock
+                //         .settings()
+                //         .headset
+                //         .controllers
+                //         .clone()
+                //         .into_option()
+                // };
 
-                let track_controllers = controllers_config
-                    .as_ref()
-                    .map(|c| c.tracked)
-                    .unwrap_or(false);
+                let track_controllers = false;
+                // controllers_config
+                //     .as_ref()
+                //     .map(|c| c.tracked)
+                //     .unwrap_or(false);
 
                 let motions;
-                let left_hand_skeleton;
-                let right_hand_skeleton;
+                // let left_hand_skeleton;
+                // let right_hand_skeleton;
                 {
+                    info!("data manager track0");
                     let mut tracking_manager_lock = tracking_manager.lock();
                     let data_manager_lock = SERVER_DATA_MANAGER.read();
                     let headset_config = &data_manager_lock.settings().headset;
@@ -847,124 +890,133 @@ fn connection_pipeline(
                         ],
                     );
 
-                    left_hand_skeleton = tracking.hand_skeletons[0].map(|s| {
-                        tracking::to_openvr_hand_skeleton(headset_config, *HAND_LEFT_ID, s)
-                    });
-                    right_hand_skeleton = tracking.hand_skeletons[1].map(|s| {
-                        tracking::to_openvr_hand_skeleton(headset_config, *HAND_RIGHT_ID, s)
-                    });
+                    // left_hand_skeleton = tracking.hand_skeletons[0].map(|s| {
+                    //     tracking::to_openvr_hand_skeleton(headset_config, *HAND_LEFT_ID, s)
+                    // });
+                    // right_hand_skeleton = tracking.hand_skeletons[1].map(|s| {
+                    //     tracking::to_openvr_hand_skeleton(headset_config, *HAND_RIGHT_ID, s)
+                    // });
                 }
 
                 // Note: using the raw unrecentered head
-                let local_eye_gazes = tracking
-                    .device_motions
-                    .iter()
-                    .find(|(id, _)| *id == *HEAD_ID)
-                    .map(|(_, m)| tracking::to_local_eyes(m.pose, tracking.face_data.eye_gazes))
-                    .unwrap_or_default();
+                // let local_eye_gazes = tracking
+                //     .device_motions
+                //     .iter()
+                //     .find(|(id, _)| *id == *HEAD_ID)
+                //     .map(|(_, m)| tracking::to_local_eyes(m.pose, tracking.face_data.eye_gazes))
+                //     .unwrap_or_default();
 
-                {
-                    let data_manager_lock = SERVER_DATA_MANAGER.read();
-                    if data_manager_lock.settings().extra.logging.log_tracking {
-                        alvr_events::send_event(EventType::Tracking(Box::new(TrackingEvent {
-                            device_motions: motions
-                                .iter()
-                                .filter_map(|(id, motion)| {
-                                    Some(((*DEVICE_ID_TO_PATH.get(id)?).into(), *motion))
-                                })
-                                .collect(),
-                            hand_skeletons: [left_hand_skeleton, right_hand_skeleton],
-                            eye_gazes: local_eye_gazes,
-                            fb_face_expression: tracking.face_data.fb_face_expression.clone(),
-                            htc_eye_expression: tracking.face_data.htc_eye_expression.clone(),
-                            htc_lip_expression: tracking.face_data.htc_lip_expression.clone(),
-                        })))
-                    }
-                }
+                // {
+                //     info!("data manager track");
+                //     let data_manager_lock = SERVER_DATA_MANAGER.read();
+                //     if data_manager_lock.settings().extra.logging.log_tracking {
+                //         alvr_events::send_event(EventType::Tracking(Box::new(TrackingEvent {
+                //             device_motions: motions
+                //                 .iter()
+                //                 .filter_map(|(id, motion)| {
+                //                     Some(((*DEVICE_ID_TO_PATH.get(id)?).into(), *motion))
+                //                 })
+                //                 .collect(),
+                //             hand_skeletons: [left_hand_skeleton, right_hand_skeleton],
+                //             eye_gazes: local_eye_gazes,
+                //             fb_face_expression: tracking.face_data.fb_face_expression.clone(),
+                //             htc_eye_expression: tracking.face_data.htc_eye_expression.clone(),
+                //             htc_lip_expression: tracking.face_data.htc_lip_expression.clone(),
+                //         })))
+                //     }
+                //     info!("data manager track after");
+                // }
 
-                if let Some(sink) = &mut face_tracking_sink {
-                    let mut face_data = tracking.face_data;
-                    face_data.eye_gazes = local_eye_gazes;
+                // if let Some(sink) = &mut face_tracking_sink {
+                //     let mut face_data = tracking.face_data;
+                //     face_data.eye_gazes = local_eye_gazes;
 
-                    sink.send_tracking(face_data);
-                }
+                //     sink.send_tracking(face_data);
+                // }
 
-                let track_body = {
-                    let data_manager_lock = SERVER_DATA_MANAGER.read();
-                    matches!(
-                        data_manager_lock.settings().headset.body_tracking,
-                        Switch::Enabled(BodyTrackingConfig { tracked: true, .. })
-                    )
-                };
+                //     info!("track_body");
+                // let track_body = {
+                //     let data_manager_lock = SERVER_DATA_MANAGER.read();
+                //     matches!(
+                //         data_manager_lock.settings().headset.body_tracking,
+                //         Switch::Enabled(BodyTrackingConfig { tracked: true, .. })
+                //     )
+                // };
+                    // info!("track_body after");
 
-                if track_body {
-                    if let Some(sink) = &mut body_tracking_sink {
-                        let tracking_manager_lock = tracking_manager.lock();
-                        sink.send_tracking(&tracking.device_motions, &tracking_manager_lock);
-                    }
-                }
+                // if track_body {
+                //     if let Some(sink) = &mut body_tracking_sink {
+                //         let tracking_manager_lock = tracking_manager.lock();
+                //         sink.send_tracking(&tracking.device_motions, &tracking_manager_lock);
+                //     }
+                // }
 
                 let ffi_motions = motions
                     .into_iter()
                     .map(|(id, motion)| tracking::to_ffi_motion(id, motion))
                     .collect::<Vec<_>>();
 
-                let ffi_body_trackers: Option<Vec<crate::FfiBodyTracker>> = {
-                    let tracking_manager_lock = tracking_manager.lock();
-                    tracking::to_ffi_body_trackers(
-                        &tracking.device_motions,
-                        &tracking_manager_lock,
-                        track_body,
-                    )
-                };
+                let ffi_body_trackers: Option<Vec<crate::FfiBodyTracker>> = None;
+                // {
+                //     let tracking_manager_lock = tracking_manager.lock();
+                //     tracking::to_ffi_body_trackers(
+                //         &tracking.device_motions,
+                //         &tracking_manager_lock,
+                //         track_body,
+                //     )
+                // };
 
-                let enable_skeleton = controllers_config
-                    .as_ref()
-                    .map(|c| c.enable_skeleton)
-                    .unwrap_or(false);
-                let ffi_left_hand_skeleton = enable_skeleton
-                    .then_some(left_hand_skeleton)
-                    .flatten()
-                    .map(tracking::to_ffi_skeleton);
-                let ffi_right_hand_skeleton = enable_skeleton
-                    .then_some(right_hand_skeleton)
-                    .flatten()
-                    .map(tracking::to_ffi_skeleton);
+                let enable_skeleton = false;
 
-                // Handle hand gestures
-                if let (Some(gestures_config), Some(gestures_button_mapping_manager)) = (
-                    controllers_config
-                        .as_ref()
-                        .and_then(|c| c.gestures.as_option()),
-                    &mut gestures_button_mapping_manager,
-                ) {
-                    let mut hand_gesture_manager_lock = hand_gesture_manager.lock();
+                // controllers_config
+                //     .as_ref()
+                //     .map(|c| c.enable_skeleton)
+                //     .unwrap_or(false);
+                let ffi_left_hand_skeleton = None;
+                // false
+                //     .then_some(left_hand_skeleton)
+                //     .flatten()
+                //     .map(tracking::to_ffi_skeleton);
+                let ffi_right_hand_skeleton = None;
+                // false
+                //     .then_some(right_hand_skeleton)
+                //     .flatten()
+                //     .map(tracking::to_ffi_skeleton);
 
-                    if let Some(hand_skeleton) = tracking.hand_skeletons[0] {
-                        trigger_hand_gesture_actions(
-                            gestures_button_mapping_manager,
-                            *HAND_LEFT_ID,
-                            &hand_gesture_manager_lock.get_active_gestures(
-                                hand_skeleton,
-                                gestures_config,
-                                *HAND_LEFT_ID,
-                            ),
-                            gestures_config.only_touch,
-                        );
-                    }
-                    if let Some(hand_skeleton) = tracking.hand_skeletons[1] {
-                        trigger_hand_gesture_actions(
-                            gestures_button_mapping_manager,
-                            *HAND_RIGHT_ID,
-                            &hand_gesture_manager_lock.get_active_gestures(
-                                hand_skeleton,
-                                gestures_config,
-                                *HAND_RIGHT_ID,
-                            ),
-                            gestures_config.only_touch,
-                        );
-                    }
-                }
+                // // Handle hand gestures
+                // if let (Some(gestures_config), Some(gestures_button_mapping_manager)) = (
+                //     controllers_config
+                //         .as_ref()
+                //         .and_then(|c| c.gestures.as_option()),
+                //     &mut gestures_button_mapping_manager,
+                // ) {
+                //     let mut hand_gesture_manager_lock = hand_gesture_manager.lock();
+
+                //     if let Some(hand_skeleton) = tracking.hand_skeletons[0] {
+                //         trigger_hand_gesture_actions(
+                //             gestures_button_mapping_manager,
+                //             *HAND_LEFT_ID,
+                //             &hand_gesture_manager_lock.get_active_gestures(
+                //                 hand_skeleton,
+                //                 gestures_config,
+                //                 *HAND_LEFT_ID,
+                //             ),
+                //             gestures_config.only_touch,
+                //         );
+                //     }
+                //     if let Some(hand_skeleton) = tracking.hand_skeletons[1] {
+                //         trigger_hand_gesture_actions(
+                //             gestures_button_mapping_manager,
+                //             *HAND_RIGHT_ID,
+                //             &hand_gesture_manager_lock.get_active_gestures(
+                //                 hand_skeleton,
+                //                 gestures_config,
+                //                 *HAND_RIGHT_ID,
+                //             ),
+                //             gestures_config.only_touch,
+                //         );
+                //     }
+                // }
 
                 if let Some(stats) = &mut *STATISTICS_MANAGER.lock() {
                     stats.report_tracking_received(tracking.target_timestamp);
@@ -1002,6 +1054,8 @@ fn connection_pipeline(
             }
         }
     });
+
+    info!("after tracking");
 
     let statistics_thread = thread::spawn({
         let client_hostname = client_hostname.clone();
@@ -1058,34 +1112,39 @@ fn connection_pipeline(
         }
     });
 
+    info!("after keepalive_thread");
+
     let control_receive_thread = thread::spawn({
-        let mut controller_button_mapping_manager = server_data_lock
-            .settings()
-            .headset
-            .controllers
-            .as_option()
-            .map(|config| {
-                if let Some(mappings) = &config.button_mappings {
-                    ButtonMappingManager::new_manual(mappings)
-                } else {
-                    ButtonMappingManager::new_automatic(
-                        &CONTROLLER_PROFILE_INFO
-                            .get(&alvr_common::hash_string(QUEST_CONTROLLER_PROFILE_PATH))
-                            .unwrap()
-                            .button_set,
-                        &config.button_mapping_config,
-                    )
-                }
-            });
+        info!("made it into control rec thread");
+        // let mut controller_button_mapping_manager = server_data_lock
+        //     .settings()
+        //     .headset
+        //     .controllers
+        //     .as_option()
+        //     .map(|config| {
+        //         if let Some(mappings) = &config.button_mappings {
+        //             ButtonMappingManager::new_manual(mappings)
+        //         } else {
+        //             ButtonMappingManager::new_automatic(
+        //                 &CONTROLLER_PROFILE_INFO
+        //                     .get(&alvr_common::hash_string(QUEST_CONTROLLER_PROFILE_PATH))
+        //                     .unwrap()
+        //                     .button_set,
+        //                 &config.button_mapping_config,
+        //             )
+        //         }
+        //     });
 
         let disconnect_notif = Arc::clone(&disconnect_notif);
         let control_sender = Arc::clone(&control_sender);
         let client_hostname = client_hostname.clone();
+
+        info!("made it into control rec thread");
         move || {
-            unsafe {
-                crate::InitOpenvrClient();
-                crate::RequestDriverResync();
-            }
+            // unsafe {
+            //     crate::InitOpenvrClient();
+            //     crate::RequestDriverResync();
+            // }
 
             let mut disconnection_deadline = Instant::now() + KEEPALIVE_TIMEOUT;
             while is_streaming(&client_hostname) {
@@ -1106,26 +1165,26 @@ fn connection_pipeline(
                 };
 
                 match packet {
-                    ClientControlPacket::PlayspaceSync(packet) => {
-                        if !settings.headset.tracking_ref_only {
-                            let data_manager_lock = SERVER_DATA_MANAGER.read();
-                            let config = &data_manager_lock.settings().headset;
-                            tracking_manager.lock().recenter(
-                                config.position_recentering_mode,
-                                config.rotation_recentering_mode,
-                            );
+                    // ClientControlPacket::PlayspaceSync(packet) => {
+                    //     if !settings.headset.tracking_ref_only {
+                    //         let data_manager_lock = SERVER_DATA_MANAGER.read();
+                    //         let config = &data_manager_lock.settings().headset;
+                    //         tracking_manager.lock().recenter(
+                    //             config.position_recentering_mode,
+                    //             config.rotation_recentering_mode,
+                    //         );
 
-                            let area = packet.unwrap_or(Vec2::new(2.0, 2.0));
-                            let wh = area.x * area.y;
-                            if wh.is_finite() && wh > 0.0 {
-                                info!("Received new playspace with size: {}", area);
-                                unsafe { crate::SetChaperoneArea(area.x, area.y) };
-                            } else {
-                                warn!("Received invalid playspace size: {}", area);
-                                unsafe { crate::SetChaperoneArea(2.0, 2.0) };
-                            }
-                        }
-                    }
+                    //         let area = packet.unwrap_or(Vec2::new(2.0, 2.0));
+                    //         let wh = area.x * area.y;
+                    //         if wh.is_finite() && wh > 0.0 {
+                    //             info!("Received new playspace with size: {}", area);
+                    //             unsafe { crate::SetChaperoneArea(area.x, area.y) };
+                    //         } else {
+                    //             warn!("Received invalid playspace size: {}", area);
+                    //             unsafe { crate::SetChaperoneArea(2.0, 2.0) };
+                    //         }
+                    //     }
+                    // }
                     ClientControlPacket::RequestIdr => {
                         if let Some(config) = DECODER_CONFIG.lock().clone() {
                             control_sender
@@ -1142,136 +1201,138 @@ fn connection_pipeline(
                         }
                         unsafe { crate::VideoErrorReportReceive() };
                     }
-                    ClientControlPacket::ViewsConfig(config) => unsafe {
-                        crate::SetViewsConfig(FfiViewsConfig {
-                            fov: [
-                                FfiFov {
-                                    left: config.fov[0].left,
-                                    right: config.fov[0].right,
-                                    up: config.fov[0].up,
-                                    down: config.fov[0].down,
-                                },
-                                FfiFov {
-                                    left: config.fov[1].left,
-                                    right: config.fov[1].right,
-                                    up: config.fov[1].up,
-                                    down: config.fov[1].down,
-                                },
-                            ],
-                            ipd_m: config.ipd_m,
-                        });
-                    },
-                    ClientControlPacket::Battery(packet) => unsafe {
-                        crate::SetBattery(packet.device_id, packet.gauge_value, packet.is_plugged);
+                    // ClientControlPacket::ViewsConfig(config) => unsafe {
+                    //     crate::SetViewsConfig(FfiViewsConfig {
+                    //         fov: [
+                    //             FfiFov {
+                    //                 left: config.fov[0].left,
+                    //                 right: config.fov[0].right,
+                    //                 up: config.fov[0].up,
+                    //                 down: config.fov[0].down,
+                    //             },
+                    //             FfiFov {
+                    //                 left: config.fov[1].left,
+                    //                 right: config.fov[1].right,
+                    //                 up: config.fov[1].up,
+                    //                 down: config.fov[1].down,
+                    //             },
+                    //         ],
+                    //         ipd_m: config.ipd_m,
+                    //     });
+                    // },
+                    // ClientControlPacket::Battery(packet) => unsafe {
+                    //     crate::SetBattery(packet.device_id, packet.gauge_value, packet.is_plugged);
 
-                        if let Some(stats) = &mut *STATISTICS_MANAGER.lock() {
-                            stats.report_battery(
-                                packet.device_id,
-                                packet.gauge_value,
-                                packet.is_plugged,
-                            );
-                        }
-                    },
-                    ClientControlPacket::Buttons(entries) => {
-                        {
-                            let data_manager_lock = SERVER_DATA_MANAGER.read();
-                            if data_manager_lock
-                                .settings()
-                                .extra
-                                .logging
-                                .log_button_presses
-                            {
-                                alvr_events::send_event(EventType::Buttons(
-                                    entries
-                                        .iter()
-                                        .map(|e| ButtonEvent {
-                                            path: BUTTON_INFO
-                                                .get(&e.path_id)
-                                                .map(|info| info.path.to_owned())
-                                                .unwrap_or_else(|| {
-                                                    format!("Unknown (ID: {:#16x})", e.path_id)
-                                                }),
-                                            value: e.value,
-                                        })
-                                        .collect(),
-                                ));
-                            }
-                        }
+                    //     if let Some(stats) = &mut *STATISTICS_MANAGER.lock() {
+                    //         stats.report_battery(
+                    //             packet.device_id,
+                    //             packet.gauge_value,
+                    //             packet.is_plugged,
+                    //         );
+                    //     }
+                    // },
+                    // ClientControlPacket::Buttons(entries) => {
+                    //     {
+                    //         let data_manager_lock = SERVER_DATA_MANAGER.read();
+                    //         if data_manager_lock
+                    //             .settings()
+                    //             .extra
+                    //             .logging
+                    //             .log_button_presses
+                    //         {
+                    //             alvr_events::send_event(EventType::Buttons(
+                    //                 entries
+                    //                     .iter()
+                    //                     .map(|e| ButtonEvent {
+                    //                         path: BUTTON_INFO
+                    //                             .get(&e.path_id)
+                    //                             .map(|info| info.path.to_owned())
+                    //                             .unwrap_or_else(|| {
+                    //                                 format!("Unknown (ID: {:#16x})", e.path_id)
+                    //                             }),
+                    //                         value: e.value,
+                    //                     })
+                    //                     .collect(),
+                    //             ));
+                    //         }
+                    //     }
 
-                        if let Some(manager) = &mut controller_button_mapping_manager {
-                            for entry in entries {
-                                manager.report_button(entry.path_id, entry.value);
-                            }
-                        };
-                    }
-                    ClientControlPacket::ActiveInteractionProfile {
-                        device_id: _,
-                        profile_id,
-                    } => {
-                        controller_button_mapping_manager =
-                            if let (Switch::Enabled(config), Some(profile_info)) = (
-                                &SERVER_DATA_MANAGER.read().settings().headset.controllers,
-                                CONTROLLER_PROFILE_INFO.get(&profile_id),
-                            ) {
-                                if let Some(mappings) = &config.button_mappings {
-                                    Some(ButtonMappingManager::new_manual(mappings))
-                                } else {
-                                    Some(ButtonMappingManager::new_automatic(
-                                        &profile_info.button_set,
-                                        &config.button_mapping_config,
-                                    ))
-                                }
-                            } else {
-                                None
-                            };
-                    }
+                    //     if let Some(manager) = &mut controller_button_mapping_manager {
+                    //         for entry in entries {
+                    //             manager.report_button(entry.path_id, entry.value);
+                    //         }
+                    //     };
+                    // }
+                    // ClientControlPacket::ActiveInteractionProfile {
+                    //     device_id: _,
+                    //     profile_id,
+                    // } => {
+                    //     controller_button_mapping_manager =
+                    //         if let (Switch::Enabled(config), Some(profile_info)) = (
+                    //             &SERVER_DATA_MANAGER.read().settings().headset.controllers,
+                    //             CONTROLLER_PROFILE_INFO.get(&profile_id),
+                    //         ) {
+                    //             if let Some(mappings) = &config.button_mappings {
+                    //                 Some(ButtonMappingManager::new_manual(mappings))
+                    //             } else {
+                    //                 Some(ButtonMappingManager::new_automatic(
+                    //                     &profile_info.button_set,
+                    //                     &config.button_mapping_config,
+                    //                 ))
+                    //             }
+                    //         } else {
+                    //             None
+                    //         };
+                    // }
                     ClientControlPacket::Log { level, message } => {
                         info!("Client {client_hostname}: [{level:?}] {message}")
                     }
-                    ClientControlPacket::Reserved(json_string) => {
-                        let reserved: ReservedClientControlPacket =
-                            match serde_json::from_str(&json_string) {
-                                Ok(reserved) => reserved,
-                                Err(e) => {
-                                    info!(
-                                    "Failed to parse reserved packet: {e}. Packet: {json_string}"
-                                );
-                                    continue;
-                                }
-                            };
+                    // ClientControlPacket::Reserved(json_string) => {
+                    //     let reserved: ReservedClientControlPacket =
+                    //         match serde_json::from_str(&json_string) {
+                    //             Ok(reserved) => reserved,
+                    //             Err(e) => {
+                    //                 info!(
+                    //                 "Failed to parse reserved packet: {e}. Packet: {json_string}"
+                    //             );
+                    //                 continue;
+                    //             }
+                    //         };
 
-                        match reserved {
-                            ReservedClientControlPacket::CustomInteractionProfile {
-                                device_id: _,
-                                input_ids,
-                            } => {
-                                controller_button_mapping_manager = if let Switch::Enabled(config) =
-                                    &SERVER_DATA_MANAGER.read().settings().headset.controllers
-                                {
-                                    if let Some(mappings) = &config.button_mappings {
-                                        Some(ButtonMappingManager::new_manual(mappings))
-                                    } else {
-                                        Some(ButtonMappingManager::new_automatic(
-                                            &input_ids,
-                                            &config.button_mapping_config,
-                                        ))
-                                    }
-                                } else {
-                                    None
-                                };
-                            }
-                        }
-                    }
+                    //     match reserved {
+                    //         ReservedClientControlPacket::CustomInteractionProfile {
+                    //             device_id: _,
+                    //             input_ids,
+                    //         } => {
+                    //             controller_button_mapping_manager = if let Switch::Enabled(config) =
+                    //                 &SERVER_DATA_MANAGER.read().settings().headset.controllers
+                    //             {
+                    //                 if let Some(mappings) = &config.button_mappings {
+                    //                     Some(ButtonMappingManager::new_manual(mappings))
+                    //                 } else {
+                    //                     Some(ButtonMappingManager::new_automatic(
+                    //                         &input_ids,
+                    //                         &config.button_mapping_config,
+                    //                     ))
+                    //                 }
+                    //             } else {
+                    //                 None
+                    //             };
+                    //         }
+                    //     }
+                    // }
                     _ => (),
                 }
 
                 disconnection_deadline = Instant::now() + KEEPALIVE_TIMEOUT;
             }
-            unsafe { crate::ShutdownOpenvrClient() };
+            // unsafe { crate::ShutdownOpenvrClient() };
 
             disconnect_notif.notify_one()
         }
     });
+
+    info!("after control thread");
 
     let stream_receive_thread = thread::spawn({
         let disconnect_notif = Arc::clone(&disconnect_notif);
@@ -1293,6 +1354,8 @@ fn connection_pipeline(
         }
     });
 
+    info!("after stream rec thread");
+
     let lifecycle_check_thread = thread::spawn({
         let disconnect_notif = Arc::clone(&disconnect_notif);
         let client_hostname = client_hostname.clone();
@@ -1312,19 +1375,21 @@ fn connection_pipeline(
         }
     });
 
-    {
-        let on_connect_script = settings.connection.on_connect_script;
+    info!("lifecycle_check_thread");
 
-        if !on_connect_script.is_empty() {
-            info!("Running on connect script (connect): {on_connect_script}");
-            if let Err(e) = Command::new(&on_connect_script)
-                .env("ACTION", "connect")
-                .spawn()
-            {
-                warn!("Failed to run connect script: {e}");
-            }
-        }
-    }
+    // {
+    //     let on_connect_script = settings.connection.on_connect_script;
+
+    //     if !on_connect_script.is_empty() {
+    //         info!("Running on connect script (connect): {on_connect_script}");
+    //         if let Err(e) = Command::new(&on_connect_script)
+    //             .env("ACTION", "connect")
+    //             .spawn()
+    //         {
+    //             warn!("Failed to run connect script: {e}");
+    //         }
+    //     }
+    // }
 
     if settings.extra.capture.startup_video_recording {
         crate::create_recording_file(server_data_lock.settings());
@@ -1369,12 +1434,13 @@ fn connection_pipeline(
 
     // Allow threads to shutdown correctly
     drop(server_data_lock);
+    info!("after connection_pipeline");
 
     // Ensure shutdown of threads
     video_send_thread.join().ok();
     game_audio_thread.join().ok();
     microphone_thread.join().ok();
-    tracking_receive_thread.join().ok();
+    // tracking_receive_thread.join().ok();
     statistics_thread.join().ok();
     control_receive_thread.join().ok();
     stream_receive_thread.join().ok();
@@ -1413,6 +1479,7 @@ pub extern "C" fn send_video(timestamp_ns: u64, buffer_ptr: *mut u8, len: i32, i
             }
         }
 
+        // let timestamp = Duration::from_nanos(chrono::Utc::now().timestamp_nanos_opt().unwrap() as u64 + 50 * 1000);
         let timestamp = Duration::from_nanos(timestamp_ns);
 
         let mut payload = vec![0; buffer_size];

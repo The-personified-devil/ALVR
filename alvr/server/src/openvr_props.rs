@@ -54,10 +54,11 @@ pub fn to_ffi_openvr_prop(prop: OpenvrProperty) -> FfiOpenvrProperty {
 }
 
 fn serial_number(device_id: u64) -> String {
+    info!("before serial number");
     let data_manager_lock = SERVER_DATA_MANAGER.read();
     let settings = data_manager_lock.settings();
 
-    if device_id == *HEAD_ID {
+    let a = if device_id == *HEAD_ID {
         match &settings.headset.emulation_mode {
             HeadsetEmulationMode::RiftS => "1WMGH000XX0000".into(),
             HeadsetEmulationMode::Quest2 => "1WMHH000X00000".into(),
@@ -86,7 +87,9 @@ fn serial_number(device_id: u64) -> String {
         }
     } else {
         "Unknown".into()
-    }
+    };
+    info!("after serial number");
+    a
 }
 
 #[no_mangle]
@@ -108,6 +111,7 @@ pub extern "C" fn get_serial_number(device_id: u64, out_str: *mut c_char) -> u64
 pub extern "C" fn set_device_openvr_props(device_id: u64) {
     use OpenvrProperty::*;
 
+    info!("server data manager before ovrprops");
     let data_manager_lock = SERVER_DATA_MANAGER.read();
     let settings = data_manager_lock.settings();
 
@@ -574,5 +578,6 @@ pub extern "C" fn set_device_openvr_props(device_id: u64) {
                 set_prop(prop.clone());
             }
         }
+    info!("server data manager after ovrprops");
     }
 }

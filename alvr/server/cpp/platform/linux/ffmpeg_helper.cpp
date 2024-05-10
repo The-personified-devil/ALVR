@@ -19,6 +19,15 @@ namespace {
 // it seems that ffmpeg does not provide this mapping
 AVPixelFormat vk_format_to_av_format(vk::Format vk_fmt)
 {
+	// for (int i = 0; i < VK_FORMAT_MAX_ENUM; ++i) {
+ //    for (int f = AV_PIX_FMT_NONE; f < AV_PIX_FMT_NB; ++f)
+ //  {
+ //    auto current_fmt = av_vkfmt_from_pixfmt(AVPixelFormat(f));
+ //    if (current_fmt and *current_fmt == (VkFormat)i)
+ //      std::cout << "yes less go" << i << std::endl;
+ //  }
+	// }
+
   for (int f = AV_PIX_FMT_NONE; f < AV_PIX_FMT_NB; ++f)
   {
     auto current_fmt = av_vkfmt_from_pixfmt(AVPixelFormat(f));
@@ -36,8 +45,124 @@ std::string alvr::AvException::makemsg(const std::string & msg, int averror)
   return msg + " " + av_msg;
 }
 
+alvr::VkContext::VkContext(VkInstance instance_, VkPhysicalDevice physicalDevice_, VkDevice device_,
+	    uint32_t queueFamilyIndex_) :
+	instance(instance_), physicalDevice(physicalDevice_), device(device_), queueFamilyIndex(queueFamilyIndex_)
+{
+  std::vector<const char*> instance_extensions = {
+      VK_KHR_GET_PHYSICAL_DEVICE_PROPERTIES_2_EXTENSION_NAME,
+      VK_KHR_SURFACE_EXTENSION_NAME,
+  };
+
+  std::vector<const char*> device_extensions = {
+      VK_KHR_EXTERNAL_MEMORY_FD_EXTENSION_NAME,
+      VK_KHR_EXTERNAL_SEMAPHORE_FD_EXTENSION_NAME,
+      VK_EXT_EXTERNAL_MEMORY_DMA_BUF_EXTENSION_NAME,
+      VK_EXT_IMAGE_DRM_FORMAT_MODIFIER_EXTENSION_NAME,
+      VK_KHR_EXTERNAL_SEMAPHORE_FD_EXTENSION_NAME,
+      VK_EXT_EXTERNAL_MEMORY_HOST_EXTENSION_NAME,
+      VK_KHR_PUSH_DESCRIPTOR_EXTENSION_NAME,
+      VK_KHR_SAMPLER_YCBCR_CONVERSION_EXTENSION_NAME,
+      VK_EXT_PHYSICAL_DEVICE_DRM_EXTENSION_NAME,
+      VK_EXT_CALIBRATED_TIMESTAMPS_EXTENSION_NAME,
+  };
+	deviceExtensions = std::move(device_extensions);
+  
+
+	// TODO: Put back
+  // device_extensions.insert(device_extensions.end(), requiredDeviceExtensions.begin(), requiredDeviceExtensions.end());
+
+  VkPhysicalDeviceDrmPropertiesEXT drmProps = {};
+  drmProps.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DRM_PROPERTIES_EXT;
+
+  VkPhysicalDeviceProperties2 deviceProps = {};
+  deviceProps.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PROPERTIES_2;
+  deviceProps.pNext = &drmProps;
+  vkGetPhysicalDeviceProperties2(physicalDevice, &deviceProps);
+
+  amd = deviceProps.properties.vendorID == 0x1002;
+  intel = deviceProps.properties.vendorID == 0x8086;
+  nvidia = deviceProps.properties.vendorID == 0x10de;
+  Info("Using Vulkan device %s", deviceProps.properties.deviceName);
+
+
+	// TODO: This is really fucking prayge
+  VkPhysicalDeviceVulkan12Features features12 = {};
+  features12.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_2_FEATURES;
+  features12.timelineSemaphore = true;
+
+  VkPhysicalDeviceFeatures2 features = {};
+  features.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2;
+  features.pNext = &features12;
+  features.features.samplerAnisotropy = VK_TRUE;
+
+  for (int i = 128; i < 136; ++i) {
+    auto path = "/dev/dri/renderD" + std::to_string(i);
+    int fd = open(path.c_str(), O_RDONLY);
+    if (fd == -1) {
+      continue;
+    }
+    struct stat s = {};
+    int ret = fstat(fd, &s);
+    close(fd);
+    if (ret != 0) {
+      continue;
+    }
+    dev_t primaryDev = makedev(drmProps.primaryMajor, drmProps.primaryMinor);
+    dev_t renderDev = makedev(drmProps.renderMajor, drmProps.renderMinor);
+    if (primaryDev == s.st_rdev || renderDev == s.st_rdev) {
+      devicePath = path;
+      break;
+    }
+  }
+  if (devicePath.empty()) {
+    devicePath = "/dev/dri/renderD128";
+  }
+  Info("Using device path %s", devicePath.c_str());
+
+  ctx = av_hwdevice_ctx_alloc(AV_HWDEVICE_TYPE_VULKAN);
+  AVHWDeviceContext *hwctx = (AVHWDeviceContext *)ctx->data;
+  AVVulkanDeviceContext *vkctx = (AVVulkanDeviceContext *)hwctx->hwctx;
+
+  vkctx->alloc = nullptr;
+  vkctx->inst = instance;
+  vkctx->phys_dev = physicalDevice;
+  vkctx->act_dev = device;
+  vkctx->device_features = features;
+  vkctx->queue_family_index = queueFamilyIndex;
+  vkctx->nb_graphics_queues = 1;
+  vkctx->queue_family_tx_index = queueFamilyIndex;
+  vkctx->nb_tx_queues = 1;
+  vkctx->queue_family_comp_index = queueFamilyIndex;
+  vkctx->nb_comp_queues = 1;
+  vkctx->get_proc_addr = vkGetInstanceProcAddr;
+  vkctx->queue_family_encode_index = -1;
+  vkctx->nb_encode_queues = 0;
+  vkctx->queue_family_decode_index = -1;
+  vkctx->nb_decode_queues = 0;
+
+  char **inst_extensions = (char**)malloc(sizeof(char*) * instanceExtensions.size());
+  for (uint32_t i = 0; i < instanceExtensions.size(); ++i) {
+    inst_extensions[i] = strdup(instanceExtensions[i]);
+  }
+  vkctx->enabled_inst_extensions = inst_extensions;
+  vkctx->nb_enabled_inst_extensions = instanceExtensions.size();
+
+  char **dev_extensions = (char**)malloc(sizeof(char*) * deviceExtensions.size());
+  for (uint32_t i = 0; i < deviceExtensions.size(); ++i) {
+    dev_extensions[i] = strdup(deviceExtensions[i]);
+  }
+  vkctx->enabled_dev_extensions = dev_extensions;
+  vkctx->nb_enabled_dev_extensions = deviceExtensions.size();
+
+  int ret = av_hwdevice_ctx_init(ctx);
+  if (ret)
+    throw AvException("failed to initialize ffmpeg", ret);
+}
+
 alvr::VkContext::VkContext(const uint8_t *deviceUUID, const std::vector<const char*> &requiredDeviceExtensions)
 {
+	// TODO: Do not this
   std::vector<const char*> instance_extensions = {
       VK_KHR_GET_PHYSICAL_DEVICE_PROPERTIES_2_EXTENSION_NAME,
       VK_KHR_SURFACE_EXTENSION_NAME,
@@ -246,8 +371,8 @@ alvr::VkContext::VkContext(const uint8_t *deviceUUID, const std::vector<const ch
 alvr::VkContext::~VkContext()
 {
   av_buffer_unref(&ctx);
-  vkDestroyDevice(device, nullptr);
-  vkDestroyInstance(instance, nullptr);
+  // vkDestroyDevice(device, nullptr);
+  // vkDestroyInstance(instance, nullptr);
 }
 
 alvr::VkFrameCtx::VkFrameCtx(VkContext & vkContext, vk::ImageCreateInfo image_create_info)

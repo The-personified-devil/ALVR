@@ -8,6 +8,7 @@ use crate::stream::StreamConfig;
 use alvr_client_core::{ClientCapabilities, ClientCoreContext, ClientCoreEvent, Platform};
 use alvr_common::{
     error,
+    warn,
     glam::{Quat, UVec2, Vec3},
     info, Fov, Pose, HAND_LEFT_ID,
 };
@@ -431,10 +432,11 @@ pub fn entry_point() {
                     .as_ref()
                     .map(|r| r.timestamp)
                     .unwrap_or(vsync_time);
+                warn!("got image uwu");
 
                 let layer = context.render(frame_result, vsync_time);
 
-                (layer, timestamp)
+                (layer, vsync_time)
             } else {
                 let layer = lobby.render(frame_state.predicted_display_time);
 

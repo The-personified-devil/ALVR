@@ -15,7 +15,7 @@
 #elif __APPLE__
 #include "platform/macos/CEncoder.h"
 #else
-#include "platform/linux/CEncoder.h"
+#include "platform/linux/MEncoder.h"
 #endif
 
 const vr::HmdMatrix34_t MATRIX_IDENTITY = {

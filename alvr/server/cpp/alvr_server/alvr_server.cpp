@@ -4,7 +4,7 @@
 #elif __APPLE__
 #include "platform/macos/CEncoder.h"
 #else
-#include "platform/linux/CEncoder.h"
+#include "platform/linux/MEncoder.h"
 #endif
 #include "Controller.h"
 #include "FakeViveTracker.h"
@@ -22,6 +22,7 @@
 #include <cstring>
 #include <map>
 #include <optional>
+#include <iostream>
 
 #ifdef __linux__
 #include "include/openvr_math.h"
@@ -332,10 +333,12 @@ void DeinitializeStreaming() {
 
 void SendVSync() { vr::VRServerDriverHost()->VsyncEvent(0.0); }
 
+ // TODO: Hook up!
 void RequestIDR() {
     if (g_driver_provider.hmd && g_driver_provider.hmd->m_encoder) {
         g_driver_provider.hmd->m_encoder->InsertIDR();
     }
+	std::cout << "Requested idr\n";
 }
 
 void SetTracking(unsigned long long targetTimestampNs,
@@ -347,25 +350,30 @@ void SetTracking(unsigned long long targetTimestampNs,
                  unsigned int controllersTracked,
                  const FfiBodyTracker *bodyTrackers,
                  int bodyTrackersCount) {
+	std::cout << "called SetTracking\n";
     for (int i = 0; i < motionsCount; i++) {
         if (deviceMotions[i].deviceID == HEAD_ID && g_driver_provider.hmd) {
-            g_driver_provider.hmd->OnPoseUpdated(targetTimestampNs, deviceMotions[i]);
-        } else {
-            if (g_driver_provider.left_controller && deviceMotions[i].deviceID == HAND_LEFT_ID) {
-                g_driver_provider.left_controller->onPoseUpdate(
-                    controllerPoseTimeOffsetS, deviceMotions[i], leftHand, controllersTracked);
-            } else if (g_driver_provider.right_controller &&
-                       deviceMotions[i].deviceID == HAND_RIGHT_ID) {
-                g_driver_provider.right_controller->onPoseUpdate(
-                    controllerPoseTimeOffsetS, deviceMotions[i], rightHand, controllersTracked);
-            }
+            // g_driver_provider.hmd->OnPoseUpdated(targetTimestampNs, deviceMotions[i]);
+			if (g_poseHistory)  {
+    	    ((PoseHistory*)g_poseHistory)->OnPoseUpdated(targetTimestampNs, deviceMotions[i]);
+	    std::cout << "updated PoseHistory\n";
+		}
+        // } else {
+        //     if (g_driver_provider.left_controller && deviceMotions[i].deviceID == HAND_LEFT_ID) {
+        //         g_driver_provider.left_controller->onPoseUpdate(
+        //             controllerPoseTimeOffsetS, deviceMotions[i], leftHand, controllersTracked);
+        //     } else if (g_driver_provider.right_controller &&
+        //                deviceMotions[i].deviceID == HAND_RIGHT_ID) {
+        //         g_driver_provider.right_controller->onPoseUpdate(
+        //             controllerPoseTimeOffsetS, deviceMotions[i], rightHand, controllersTracked);
+        //     }
         }
     }
-    if (Settings::Instance().m_enableBodyTrackingFakeVive) {
-        for (int i = 0; i < bodyTrackersCount; i++) {
-            g_driver_provider.generic_trackers.at(bodyTrackers[i].trackerID)->OnPoseUpdated(targetTimestampNs, bodyTrackers[i]);
-        }
-    }
+    // if (Settings::Instance().m_enableBodyTrackingFakeVive) {
+    //     for (int i = 0; i < bodyTrackersCount; i++) {
+    //         g_driver_provider.generic_trackers.at(bodyTrackers[i].trackerID)->OnPoseUpdated(targetTimestampNs, bodyTrackers[i]);
+    //     }
+    // }
 }
 
 void VideoErrorReportReceive() {

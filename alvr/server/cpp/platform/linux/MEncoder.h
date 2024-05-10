@@ -4,8 +4,10 @@
 #include "shared/threadtools.h"
 #include <atomic>
 #include <memory>
+#include <vector>
 #include <poll.h>
 #include <sys/types.h>
+#include <vulkan/vulkan_core.h>
 
 class PoseHistory;
 
@@ -15,6 +17,7 @@ class CEncoder : public CThread {
     ~CEncoder();
     bool Init() override { return true; }
     void Run() override;
+    void Rune(VkInstance, VkPhysicalDevice, VkDevice, uint32_t);
 
     void Stop();
     void OnStreamStart();
@@ -24,13 +27,13 @@ class CEncoder : public CThread {
     void CaptureFrame();
 
   private:
-    void GetFds(int client, int (*fds)[6]);
+    // void GetFds(int client, int (*fds)[6]);
     std::shared_ptr<PoseHistory> m_poseHistory;
     std::atomic_bool m_exiting{false};
     IDRScheduler m_scheduler;
     pollfd m_socket;
     std::string m_socketPath;
-    int m_fds[6];
+    // int m_fds[6];
     bool m_connected = false;
     std::atomic_bool m_captureFrame = false;
 };

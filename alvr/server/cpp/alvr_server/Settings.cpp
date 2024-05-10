@@ -22,6 +22,7 @@ Settings::~Settings() {}
 
 void Settings::Load() {
     try {
+		std::cout << "Session path: " << g_sessionPath << std::endl;
         auto sessionFile = std::ifstream(g_sessionPath);
 
         auto json = std::string(std::istreambuf_iterator<char>(sessionFile),

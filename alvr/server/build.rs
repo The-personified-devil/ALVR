@@ -40,6 +40,7 @@ fn main() {
                 && entry.file_name() != "platform"
                 && (platform_name != "macos" || entry.file_name() != "amf")
                 && (platform_name != "linux" || entry.file_name() != "amf")
+                // && entry.file_name() != "alvr_server"
         });
 
     let platform_iter = walkdir::WalkDir::new(platform_subpath).into_iter();
@@ -174,6 +175,7 @@ fn main() {
     bindgen::builder()
         .clang_arg("-xc++")
         .header("cpp/alvr_server/bindings.h")
+        .header("cpp/monado/bindings.h")
         .derive_default(true)
         .generate()
         .unwrap()

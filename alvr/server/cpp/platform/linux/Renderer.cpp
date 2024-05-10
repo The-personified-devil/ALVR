@@ -1,11 +1,13 @@
 #include "Renderer.h"
 
 #include <array>
+#include <cstdio>
 #include <fstream>
 #include <iostream>
 #include <cassert>
 #include <cstring>
 #include <algorithm>
+#include <pthread.h>
 
 #ifndef DRM_FORMAT_INVALID
 #define DRM_FORMAT_INVALID 0
@@ -26,6 +28,8 @@
 struct Vertex {
     float position[2];
 };
+
+pthread_mutex_t* queue_mutex;
 
 static uint32_t to_drm_format(VkFormat format)
 {
@@ -149,7 +153,8 @@ void Renderer::Startup(uint32_t width, uint32_t height, VkFormat format)
     samplerInfo.addressModeU = VK_SAMPLER_ADDRESS_MODE_REPEAT;
     samplerInfo.addressModeV = VK_SAMPLER_ADDRESS_MODE_REPEAT;
     samplerInfo.addressModeW = VK_SAMPLER_ADDRESS_MODE_REPEAT;
-    samplerInfo.anisotropyEnable = VK_TRUE;
+	// TODO: Fix
+    samplerInfo.anisotropyEnable = VK_FALSE;
     samplerInfo.maxAnisotropy = 16.0f;
     samplerInfo.borderColor = VK_BORDER_COLOR_FLOAT_TRANSPARENT_BLACK;
     VK_CHECK(vkCreateSampler(m_dev, &samplerInfo, nullptr, &m_sampler));
@@ -177,6 +182,72 @@ void Renderer::Startup(uint32_t width, uint32_t height, VkFormat format)
     VkFenceCreateInfo fenceInfo = {};
     fenceInfo.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO;
     VK_CHECK(vkCreateFence(m_dev, &fenceInfo, nullptr, &m_fence));
+}
+
+void Renderer::AddImg(VkImageCreateInfo imageInfo, VkSemaphore semaphore)
+{
+
+	VkImage image;
+
+	VK_CHECK(vkCreateImage(m_dev, &imageInfo, nullptr, &image));
+
+    VkMemoryDedicatedRequirements mdr = {};
+    mdr.sType = VK_STRUCTURE_TYPE_MEMORY_DEDICATED_REQUIREMENTS;
+
+    VkMemoryRequirements2 memoryReqs = {};
+    memoryReqs.sType = VK_STRUCTURE_TYPE_MEMORY_REQUIREMENTS_2;
+    memoryReqs.pNext = &mdr;
+
+    VkImageMemoryRequirementsInfo2 memoryReqsInfo = {};
+    memoryReqsInfo.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_REQUIREMENTS_INFO_2;
+    memoryReqsInfo.image = image;
+    vkGetImageMemoryRequirements2(m_dev, &memoryReqsInfo, &memoryReqs);
+    // m_output.size = memoryReqs.memoryRequirements.size;
+
+    // VkExportMemoryAllocateInfo memory_export_info = {};
+    // memory_export_info.sType = VK_STRUCTURE_TYPE_EXPORT_MEMORY_ALLOCATE_INFO;
+    // memory_export_info.handleTypes = extMemImageInfo.handleTypes;
+
+    VkMemoryDedicatedAllocateInfo memory_dedicated_info = {};
+    memory_dedicated_info.sType = VK_STRUCTURE_TYPE_MEMORY_DEDICATED_ALLOCATE_INFO;
+    memory_dedicated_info.image = image;
+
+	VkDeviceMemory mem;
+    VkMemoryAllocateInfo memi = {};
+    memi.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
+    memi.pNext = &memory_dedicated_info;
+    memi.allocationSize = memoryReqs.memoryRequirements.size;
+    memi.memoryTypeIndex = memoryTypeIndex(VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, memoryReqs.memoryRequirements.memoryTypeBits);
+    VK_CHECK(vkAllocateMemory(m_dev, &memi, nullptr, &mem));
+
+    VkBindImageMemoryInfo bimi = {};
+    bimi.sType = VK_STRUCTURE_TYPE_BIND_IMAGE_MEMORY_INFO;
+    bimi.image = image;
+    bimi.memory = mem;
+    bimi.memoryOffset = 0;
+    VK_CHECK(vkBindImageMemory2(m_dev, 1, &bimi));
+
+    VkImageViewCreateInfo viewInfo = {};
+    viewInfo.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
+    viewInfo.viewType = VK_IMAGE_VIEW_TYPE_2D;
+    viewInfo.format = imageInfo.format;
+    viewInfo.image = image;
+    viewInfo.subresourceRange = {};
+    viewInfo.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+    viewInfo.subresourceRange.baseMipLevel = 0;
+    viewInfo.subresourceRange.levelCount = 1;
+    viewInfo.subresourceRange.baseArrayLayer = 0;
+    viewInfo.subresourceRange.layerCount = 1;
+    viewInfo.components.r = VK_COMPONENT_SWIZZLE_IDENTITY;
+    viewInfo.components.g = VK_COMPONENT_SWIZZLE_IDENTITY;
+    viewInfo.components.b = VK_COMPONENT_SWIZZLE_IDENTITY;
+    viewInfo.components.a = VK_COMPONENT_SWIZZLE_IDENTITY;
+	VkImageView view;
+    VK_CHECK(vkCreateImageView(m_dev, &viewInfo, nullptr, &view));
+
+
+    m_images.push_back({image, VK_IMAGE_LAYOUT_UNDEFINED, mem, semaphore, view});
+
 }
 
 void Renderer::AddImage(VkImageCreateInfo imageInfo, size_t memoryIndex, int imageFd, int semaphoreFd)
@@ -650,7 +721,11 @@ void Renderer::Render(uint32_t index, uint64_t waitValue)
     submitInfo.pSignalSemaphores = &m_output.semaphore;
     submitInfo.commandBufferCount = 1;
     submitInfo.pCommandBuffers = &m_commandBuffer;
+
+    std::cout << "queue_mutex" << queue_mutex << "\n";
+    pthread_mutex_lock(queue_mutex);
     VK_CHECK(vkQueueSubmit(m_queue, 1, &submitInfo, nullptr));
+    pthread_mutex_unlock(queue_mutex);
 }
 
 void Renderer::Sync()
@@ -662,10 +737,12 @@ void Renderer::Sync()
     submitInfo.waitSemaphoreCount = 1;
     submitInfo.pWaitSemaphores = &m_output.semaphore;
     submitInfo.pWaitDstStageMask = &waitStage;
+    pthread_mutex_lock(queue_mutex);
     VK_CHECK(vkQueueSubmit(m_queue, 1, &submitInfo, m_fence));
 
     VK_CHECK(vkWaitForFences(m_dev, 1, &m_fence, VK_TRUE, UINT64_MAX));
     VK_CHECK(vkResetFences(m_dev, 1, &m_fence));
+    pthread_mutex_unlock(queue_mutex);
 }
 
 Renderer::Output &Renderer::GetOutput()
@@ -768,9 +845,12 @@ void Renderer::commandBufferSubmit()
     fenceInfo.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO;
     VkFence fence;
     VK_CHECK(vkCreateFence(m_dev, &fenceInfo, nullptr, &fence));
+
+    pthread_mutex_lock(queue_mutex);
     VK_CHECK(vkQueueSubmit(m_queue, 1, &submitInfo, fence));
     VK_CHECK(vkWaitForFences(m_dev, 1, &fence, VK_TRUE, UINT64_MAX));
     vkDestroyFence(m_dev, fence, nullptr);
+    pthread_mutex_unlock(queue_mutex);
 }
 
 void Renderer::addStagingImage(uint32_t width, uint32_t height)

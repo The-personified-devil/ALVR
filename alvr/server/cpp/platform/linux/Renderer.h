@@ -60,6 +60,7 @@ public:
     void Startup(uint32_t width, uint32_t height, VkFormat format);
 
     void AddImage(VkImageCreateInfo imageInfo, size_t memoryIndex, int imageFd, int semaphoreFd);
+    void AddImg(VkImageCreateInfo imageInfo, VkSemaphore semaphore);
 
     void AddPipeline(RenderPipeline *pipeline);
 

@@ -36,6 +36,7 @@ pub fn init_logging(events_sender: Sender<Event>) {
         log_dispatch = log_dispatch.level(LevelFilter::Info);
     }
 
+    println!("server data manager before init_logging");
     if SERVER_DATA_MANAGER
         .read()
         .settings()
@@ -64,6 +65,7 @@ pub fn init_logging(events_sender: Sender<Event>) {
             log_dispatch = log_dispatch.chain(std::io::stdout());
         }
     }
+    println!("server data manager after init_logging");
 
     log_dispatch
         .chain(

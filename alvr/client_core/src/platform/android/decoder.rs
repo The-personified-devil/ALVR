@@ -65,6 +65,8 @@ impl VideoDecoderSink {
                     )
                 };
 
+                // NOTE: Fucking hell the pts is utterly irrelevant apparently
+
                 // NB: the function expects the timestamp in micros, but nanos is used to have
                 // complete precision, so when converted back to Duration it can compare correctly
                 // to other Durations
@@ -298,6 +300,7 @@ fn decoder_lifecycle(
         match decoder.dequeue_output_buffer(Duration::from_millis(1)) {
             Ok(DequeuedOutputBufferInfoResult::Buffer(buffer)) => {
                 // The buffer timestamp is actually nanoseconds
+                warn!("got to actually output an image");
                 let presentation_time_ns = buffer.info().presentation_time_us();
 
                 if let Err(e) = decoder.release_output_buffer_at_time(buffer, presentation_time_ns)
@@ -378,6 +381,7 @@ pub fn video_decoder_split(
                 Arc::clone(&image_queue),
                 &mut image_reader,
             ) {
+                error!("{}", e);
                 *error.lock() = Some(e);
             }
 

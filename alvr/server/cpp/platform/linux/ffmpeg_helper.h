@@ -3,6 +3,7 @@
 #include <vulkan/vulkan.hpp>
 #include <functional>
 #include <memory>
+#include <vulkan/vulkan_core.h>
 
 extern "C" {
   #include <stdint.h>
@@ -40,6 +41,8 @@ class VkContext
 {
 public:
   VkContext(const uint8_t* deviceUUID, const std::vector<const char*> &requiredDeviceExtensions);
+  VkContext(VkInstance instance_, VkPhysicalDevice physicalDevice_, VkDevice device_,
+	    uint32_t queueFamilyIndex);
   ~VkContext();
   VkDevice get_vk_device() const { return device;}
   VkInstance get_vk_instance() const { return instance;}

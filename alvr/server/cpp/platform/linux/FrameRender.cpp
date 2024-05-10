@@ -2,6 +2,7 @@
 #include "alvr_server/Settings.h"
 #include "alvr_server/Logger.h"
 #include "alvr_server/bindings.h"
+#include "monado/bindings.h"
 
 #include <fstream>
 #include <filesystem>
@@ -16,6 +17,71 @@ FrameRender::FrameRender(alvr::VkContext &ctx, init_packet &init, int fds[])
 
     for (size_t i = 0; i < 3; ++i) {
         AddImage(init.image_create_info, init.mem_index, fds[2 * i], fds[2 * i + 1]);
+    }
+
+    m_width = Settings::Instance().m_renderWidth;
+    m_height = Settings::Instance().m_renderHeight;
+
+    Info("FrameRender: Input size %ux%u", m_width, m_height);
+
+    if (Settings::Instance().m_force_sw_encoding) {
+        m_handle = ExternalHandle::None;
+    } else if (ctx.amd || ctx.intel) {
+        m_handle = ExternalHandle::DmaBuf;
+    } else if (ctx.nvidia) {
+        m_handle = ExternalHandle::OpaqueFd;
+    }
+
+    setupCustomShaders("pre");
+
+    if (Settings::Instance().m_enableColorCorrection) {
+        setupColorCorrection();
+    }
+
+    if (Settings::Instance().m_enableFoveatedEncoding) {
+        setupFoveatedRendering();
+    }
+
+    setupCustomShaders("post");
+
+    if (m_pipelines.empty()) {
+        RenderPipeline *pipeline = new RenderPipeline(this);
+        pipeline->SetShader(QUAD_SHADER_COMP_SPV_PTR, QUAD_SHADER_COMP_SPV_LEN);
+        m_pipelines.push_back(pipeline);
+        AddPipeline(pipeline);
+    }
+
+    Info("FrameRender: Output size %ux%u", m_width, m_height);
+}
+
+AlvrVkExport expt;
+
+FrameRender::FrameRender(alvr::VkContext &ctx, init_packet &init)
+    : Renderer(ctx.get_vk_instance(), ctx.get_vk_device(), ctx.get_vk_phys_device(), ctx.get_vk_queue_family_index(), ctx.get_vk_device_extensions())
+{
+    m_quadShaderSize = QUAD_SHADER_COMP_SPV_LEN;
+    m_quadShaderCode = reinterpret_cast<const uint32_t*>(QUAD_SHADER_COMP_SPV_PTR);
+
+    Startup(init.image_create_info.extent.width, init.image_create_info.extent.height, init.image_create_info.format);
+
+    VkSemaphoreTypeCreateInfo timelineInfo = {};
+    timelineInfo.sType = VK_STRUCTURE_TYPE_SEMAPHORE_TYPE_CREATE_INFO;
+    timelineInfo.semaphoreType = VK_SEMAPHORE_TYPE_TIMELINE;
+
+    VkSemaphoreCreateInfo semInfo = {};
+    semInfo.sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO;
+    semInfo.pNext = &timelineInfo;
+    VkSemaphore semaphore;
+    VK_CHECK(vkCreateSemaphore(m_dev, &semInfo, nullptr, &semaphore));
+
+    expt.semaphore = (uint64_t)semaphore;
+
+    for (size_t i = 0; i < 3; ++i) {
+        // AddImage(init.image_create_info, init.mem_index, fds[2 * i], fds[2 * i + 1]);
+
+        AddImg(init.image_create_info, semaphore);
+		expt.imgs[i].img = (uint64_t)m_images[i].image;
+		expt.imgs[i].view = (uint64_t)m_images[i].view;
     }
 
     m_width = Settings::Instance().m_renderWidth;
@@ -166,7 +232,7 @@ void FrameRender::setupFoveatedRendering()
 void FrameRender::setupCustomShaders(const std::string &stage)
 {
     try {
-        const std::filesystem::path shadersDir = std::filesystem::path(g_sessionPath).replace_filename("shaders");
+        const std::filesystem::path shadersDir = std::filesystem::path(/* g_sessionPath */"/home/duck/devel/ALVR/alvr/server/cpp/platform/linux/shader")/* .replace_filename("shaders") */;
         for (const auto &entry : std::filesystem::directory_iterator(shadersDir / std::filesystem::path(stage))) {
             std::ifstream fs(entry.path(), std::ios::binary | std::ios::in);
             uint32_t magic = 0;
@@ -175,7 +241,7 @@ void FrameRender::setupCustomShaders(const std::string &stage)
                 Warn("FrameRender: Shader file %s is not a SPIR-V file", entry.path().c_str());
                 continue;
             }
-            Info("FrameRender: Adding [%s] shader %s", stage.c_str(), entry.path().filename().c_str());
+            Warn("FrameRender: Adding [%s] shader %s", stage.c_str(), entry.path().filename().c_str());
             RenderPipeline *pipeline = new RenderPipeline(this);
             pipeline->SetShader(entry.path().c_str());
             m_pipelines.push_back(pipeline);

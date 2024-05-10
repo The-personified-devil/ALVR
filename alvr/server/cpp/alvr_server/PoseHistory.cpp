@@ -61,7 +61,9 @@ std::optional<PoseHistory::TrackingHistoryFrame> PoseHistory::GetBestPoseMatch(c
 	if (minIt != m_poseBuffer.end()) {
 		return *minIt;
 	}
-	return {};
+
+	return m_poseBuffer.back();
+	// return {};
 }
 
 std::optional<PoseHistory::TrackingHistoryFrame> PoseHistory::GetPoseAt(uint64_t timestampNs) const

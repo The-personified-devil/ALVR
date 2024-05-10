@@ -42,7 +42,7 @@ pub fn driver_registration(driver_paths: &[PathBuf], register: bool) -> Result<(
 }
 
 pub fn get_driver_dir_from_registered() -> Result<PathBuf> {
-    for dir in get_registered_drivers()? {
+    for dir in /* get_registered_drivers()? */ [PathBuf::from("/usr/lib/steamvr/alvr/")] {
         let maybe_driver_name = || -> Result<_> {
             let manifest_string = fs::read_to_string(dir.join("driver.vrdrivermanifest"))?;
             let mut manifest_map =

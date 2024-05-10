@@ -8,13 +8,16 @@ use alvr_session::{
 use std::collections::{HashMap, HashSet};
 
 pub static REGISTERED_BUTTON_SET: Lazy<HashSet<u64>> = Lazy::new(|| {
+    info!("registered button set before");
+    info!("{}", SERVER_DATA_MANAGER.is_locked());
+    info!("{}", SERVER_DATA_MANAGER.is_locked_exclusive());
     let data_manager_lock = SERVER_DATA_MANAGER.read();
     let Switch::Enabled(controllers_config) = &data_manager_lock.settings().headset.controllers
     else {
         return HashSet::new();
     };
 
-    match &controllers_config.emulation_mode {
+    let a = match &controllers_config.emulation_mode {
         ControllersEmulationMode::RiftSTouch
         | ControllersEmulationMode::Quest2Touch
         | ControllersEmulationMode::Quest3Plus => CONTROLLER_PROFILE_INFO
@@ -37,7 +40,9 @@ pub static REGISTERED_BUTTON_SET: Lazy<HashSet<u64>> = Lazy::new(|| {
             .iter()
             .map(|b| alvr_common::hash_string(b))
             .collect(),
-    }
+    };
+    info!("registered button set after");
+    a
 });
 
 pub struct BindingTarget {
