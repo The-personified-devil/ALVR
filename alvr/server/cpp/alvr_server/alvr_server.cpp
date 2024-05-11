@@ -335,10 +335,11 @@ void SendVSync() { vr::VRServerDriverHost()->VsyncEvent(0.0); }
 
  // TODO: Hook up!
 void RequestIDR() {
-    if (g_driver_provider.hmd && g_driver_provider.hmd->m_encoder) {
-        g_driver_provider.hmd->m_encoder->InsertIDR();
-    }
-	std::cout << "Requested idr\n";
+	if (g_encoder) {
+		((CEncoder*)g_encoder)->InsertIDR();
+		std::cerr << "Delivered idr\n";
+	}
+	std::cerr << "Requested idr\n";
 }
 
 void SetTracking(unsigned long long targetTimestampNs,

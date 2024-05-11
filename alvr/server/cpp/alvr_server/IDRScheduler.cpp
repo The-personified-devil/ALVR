@@ -2,6 +2,7 @@
 
 #include "Utils.h"
 #include <mutex>
+#include <iostream>
 
 IDRScheduler::IDRScheduler()
 {
@@ -56,6 +57,7 @@ bool IDRScheduler::CheckIDRInsertion() {
 	if (m_scheduled) {
 		if (m_insertIDRTime <= GetTimestampUs()) {
 			m_scheduled = false;
+			std::cout << "actually gave out an idr\n";
 			return true;
 		}
 	}

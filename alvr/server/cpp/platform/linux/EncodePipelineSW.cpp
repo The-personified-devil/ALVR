@@ -99,6 +99,7 @@ void alvr::EncodePipelineSW::PushFrame(uint64_t targetTimestampNs, bool idr)
   rgbtoyuv->Sync();
   timestamp.cpu = std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::steady_clock::now().time_since_epoch()).count();
 
+  shouldIDR = idr;
   picture.i_type = idr ? X264_TYPE_IDR : X264_TYPE_AUTO;
   pts = picture.i_pts = targetTimestampNs;
 
@@ -117,6 +118,7 @@ bool alvr::EncodePipelineSW::GetEncoded(FramePacket &packet)
   packet.size = nal_size;
   packet.data = nal[0].p_payload;
   packet.pts = pts;
+  packet.isIDR = shouldIDR;
   return packet.size > 0;
 }
 

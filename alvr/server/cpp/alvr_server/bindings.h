@@ -110,6 +110,7 @@ extern "C" unsigned int RGBTOYUV420_SHADER_COMP_SPV_LEN;
 extern "C" const char *g_sessionPath;
 extern "C" const char *g_driverRootDir;
 extern "C" void* g_poseHistory;
+extern "C" void* g_encoder;
 
 extern "C" void (*LogError)(const char *stringPtr);
 extern "C" void (*LogWarn)(const char *stringPtr);

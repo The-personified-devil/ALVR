@@ -44,6 +44,7 @@ uint64_t tl_val;
 uint32_t img_idx;
 
 void* g_poseHistory = nullptr;
+void* g_encoder;
 
 namespace {
 void read_exactly(pollfd pollfds, char *out, size_t size, std::atomic_bool &exiting) {
@@ -218,6 +219,7 @@ void CEncoder::Rune(VkInstance instance,
 		m_poseHistory = std::make_shared<PoseHistory>();
 
 		g_poseHistory = (void*)m_poseHistory.get();
+		g_encoder = (void*)this;
 
 	
         while (not m_exiting) {
@@ -257,7 +259,11 @@ void CEncoder::Rune(VkInstance instance,
                 ReportComposed(pose->targetTimestampNs, 0);
             }
 
-            encode_pipeline->PushFrame(pose->targetTimestampNs, m_scheduler.CheckIDRInsertion());
+            bool is_idr = m_scheduler.CheckIDRInsertion();
+            encode_pipeline->PushFrame(pose->targetTimestampNs, is_idr);
+			if (is_idr) {
+				std::cout << "check idr insertion true\n";
+			}
 
             static_assert(sizeof(frame_info.pose) == sizeof(vr::HmdMatrix34_t &));
 
@@ -293,6 +299,9 @@ void CEncoder::Rune(VkInstance instance,
 
                 ReportPresent(pose->targetTimestampNs, present_offset);
                 ReportComposed(pose->targetTimestampNs, composed_offset);
+		if (packet.isIDR) {
+			std::cout << "packet is idr\n" << packet.isIDR;
+		}
             }
 
             ParseFrameNals(

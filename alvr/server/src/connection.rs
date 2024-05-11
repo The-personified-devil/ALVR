@@ -1504,6 +1504,10 @@ pub extern "C" fn send_video(timestamp_ns: u64, buffer_ptr: *mut u8, len: i32, i
                 file.write_all(&payload).ok();
             }
 
+            if is_idr {
+                println!("GOT IDR");
+            }
+
             if matches!(
                 sender.try_send(VideoPacket {
                     header: VideoPacketHeader { timestamp, is_idr },
