@@ -5,8 +5,8 @@ use crate::*;
 use alvr_common::log::{self, log};
 
 use crate::c_api::AlvrVkInfo;
-use crate::entry_point;
 
+// TODO: Fully replace this with the thing from zarik
 pub fn monado_entry(info: *mut AlvrVkInfo) -> bool {
     crate::init();
 
@@ -223,8 +223,5 @@ pub fn monado_entry(info: *mut AlvrVkInfo) -> bool {
 
     }
 
-    unsafe {
-        entry_point(info as *mut crate::bindings::AlvrVkInfo);
-    }
     true
 }

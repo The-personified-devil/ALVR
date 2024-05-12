@@ -31,12 +31,13 @@ struct AlvrVkExport {
 extern "C" AlvrVkExport expt;
 
 extern "C" pthread_mutex_t* queue_mutex;
-extern "C" pthread_mutex_t render_mutex;
-extern "C" pthread_mutex_t double_mutex;
 
-extern "C" uint64_t tl_val;
-extern "C" uint32_t img_idx;
+// TODO: This will explode lmao
+// Should we just give the entire thing to monado
+struct CEncoder;
 
-extern "C" void entry_point(AlvrVkInfo* info);
-
-extern "C" void signal_enc(uint64_t, uint32_t);
+// TODO: Just accept it, rewrite it even more and then integrate it into monado as a full render target
+// without these 500 extra weird middle steps
+extern "C" CEncoder* create_encoder(AlvrVkInfo* info);
+extern "C" void create_images(CEncoder);
+extern "C" void present(CEncoder, uint64_t frame, uint64_t timeline_value, uint32_t img_idx);

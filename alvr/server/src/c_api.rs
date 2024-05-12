@@ -263,10 +263,10 @@ pub unsafe extern "C" fn alvr_get_framerate() -> f32 {
     todo!()
 }
 
-#[no_mangle]
-pub unsafe extern "C" fn alvr_pre_vulkan(timeline_sem_val: u64, img_idx: u32) {
-   crate::signal_enc(timeline_sem_val, img_idx); 
-}
+// #[no_mangle]
+// pub unsafe extern "C" fn alvr_pre_vulkan(timeline_sem_val: u64, img_idx: u32) {
+//    crate::signal_enc(timeline_sem_val, img_idx); 
+// }
 
 #[no_mangle]
 pub unsafe extern "C" fn alvr_post_vulkan() {
