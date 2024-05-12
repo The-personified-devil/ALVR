@@ -13,7 +13,7 @@ class PoseHistory;
 
 class CEncoder : public CThread {
   public:
-    CEncoder(std::shared_ptr<PoseHistory> poseHistory);
+    CEncoder();
     ~CEncoder();
     bool Init() override { return true; }
     void Run() override;
@@ -23,17 +23,14 @@ class CEncoder : public CThread {
     void OnStreamStart();
     void OnPacketLoss();
     void InsertIDR();
-    bool IsConnected() { return m_connected; }
+    bool IsConnected() {
+		// TODO: Replace or delete
+		return true;
+	}
     void CaptureFrame();
 
   private:
-    // void GetFds(int client, int (*fds)[6]);
-    std::shared_ptr<PoseHistory> m_poseHistory;
     std::atomic_bool m_exiting{false};
     IDRScheduler m_scheduler;
-    pollfd m_socket;
-    std::string m_socketPath;
-    // int m_fds[6];
-    bool m_connected = false;
     std::atomic_bool m_captureFrame = false;
 };

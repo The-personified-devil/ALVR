@@ -1,6 +1,5 @@
 #include "bindings.h"
 #include "platform/linux/MEncoder.h"
-#include "alvr_server/PoseHistory.h"
 #include <cstdint>
 #include <cstdio>
 #include <thread>
@@ -19,7 +18,7 @@ void entry_point(AlvrVkInfo* info) {
 
 	std::thread t1([=]{
 	Settings::Instance().Load();
-	CEncoder e(std::make_shared<PoseHistory>());
+	CEncoder e{};
 	e.Rune(info->instance, info->physDev, info->device, info->queueFamIdx);
         e.OnStreamStart();
 	});

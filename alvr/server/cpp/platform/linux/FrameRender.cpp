@@ -56,13 +56,13 @@ FrameRender::FrameRender(alvr::VkContext &ctx, init_packet &init, int fds[])
 
 AlvrVkExport expt;
 
-FrameRender::FrameRender(alvr::VkContext &ctx, init_packet &init)
+FrameRender::FrameRender(alvr::VkContext &ctx, uint32_t num_imgs, VkImageCreateInfo image_create_info)
     : Renderer(ctx.get_vk_instance(), ctx.get_vk_device(), ctx.get_vk_phys_device(), ctx.get_vk_queue_family_index(), ctx.get_vk_device_extensions())
 {
     m_quadShaderSize = QUAD_SHADER_COMP_SPV_LEN;
     m_quadShaderCode = reinterpret_cast<const uint32_t*>(QUAD_SHADER_COMP_SPV_PTR);
 
-    Startup(init.image_create_info.extent.width, init.image_create_info.extent.height, init.image_create_info.format);
+    Startup(image_create_info.extent.width, image_create_info.extent.height, image_create_info.format);
 
     VkSemaphoreTypeCreateInfo timelineInfo = {};
     timelineInfo.sType = VK_STRUCTURE_TYPE_SEMAPHORE_TYPE_CREATE_INFO;
@@ -77,15 +77,15 @@ FrameRender::FrameRender(alvr::VkContext &ctx, init_packet &init)
     expt.semaphore = (uint64_t)semaphore;
 
     for (size_t i = 0; i < 3; ++i) {
-        // AddImage(init.image_create_info, init.mem_index, fds[2 * i], fds[2 * i + 1]);
-
-        AddImg(init.image_create_info, semaphore);
+        AddImg(image_create_info, semaphore);
 		expt.imgs[i].img = (uint64_t)m_images[i].image;
 		expt.imgs[i].view = (uint64_t)m_images[i].view;
     }
 
     m_width = Settings::Instance().m_renderWidth;
     m_height = Settings::Instance().m_renderHeight;
+    
+    // TODO: Shouldn't we just take the size from the create info or the other way around?
 
     Info("FrameRender: Input size %ux%u", m_width, m_height);
 

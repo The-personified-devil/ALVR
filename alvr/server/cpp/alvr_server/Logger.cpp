@@ -2,7 +2,7 @@
 
 #include <cstdarg>
 
-#include "driverlog.h"
+// #include "driverlog.h"
 #include "bindings.h"
 
 void _log(const char *format, va_list args, void (*logFn)(const char *), bool driverLog = false)
@@ -16,11 +16,11 @@ void _log(const char *format, va_list args, void (*logFn)(const char *), bool dr
 
 	logFn(buf);
 
-	//TODO: driver logger should concider current log level
-#ifndef ALVR_DEBUG_LOG
-	if (driverLog)
-#endif
-		DriverLog(buf);
+// 	//TODO: driver logger should concider current log level
+// #ifndef ALVR_DEBUG_LOG
+// 	if (driverLog)
+// #endif
+// 		DriverLog(buf);
 }
 
 Exception MakeException(const char *format, ...)
