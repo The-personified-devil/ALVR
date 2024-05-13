@@ -27,7 +27,6 @@ template <typename T> class Optional {
     Optional() {}
 
     template <typename... CTs> void emplace(CTs &&...cvals) {
-        // TODO: Is this sane at all
         new(&value) T{std::forward<CTs>(cvals)...};
     }
 

@@ -120,18 +120,6 @@ typedef struct AlvrFov {
     float down;
 } AlvrFov;
 
-typedef struct AlvrVkInfo {
-    uint64_t instance;
-    uint32_t version;
-    uint64_t physical_device;
-    uint32_t physical_device_index;
-    uint64_t device;
-    uint32_t queue_family_index;
-    uint32_t queue_index;
-    uint64_t queue;
-    uint64_t queue_mutex;
-} AlvrVkInfo;
-
 #ifdef __cplusplus
 extern "C" {
 #endif // __cplusplus
@@ -173,13 +161,7 @@ void alvr_view_poses(struct AlvrSpaceRelation *out_head_relation,
 
 void alvr_destroy_device(uint64_t device_id);
 
-bool alvr_init_vulkan(struct AlvrVkInfo *info);
-
-void alvr_take_vulkan(AlvrVkExport *info);
-
 float alvr_get_framerate(void);
-
-void alvr_pre_vulkan(uint64_t timeline_sem_val, uint32_t img_idx);
 
 void alvr_post_vulkan(void);
 

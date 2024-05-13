@@ -216,45 +216,6 @@ pub unsafe extern "C" fn alvr_destroy_device(device_id: u64) {
     todo!()
 }
 
-#[repr(C)]
-#[derive(Clone, Copy)]
-pub struct AlvrVkInfo {
-    pub instance: u64,
-    pub version: u32,
-    pub physical_device: u64,
-    pub physical_device_index: u32,
-    pub device: u64,
-    pub queue_family_index: u32,
-    pub queue_index: u32,
-    pub queue: u64,
-    pub queue_mutex: u64,
-}
-
-#[no_mangle]
-pub unsafe extern "C" fn alvr_init_vulkan(info: *mut AlvrVkInfo) -> bool {
-    crate::monado::monado_entry(info)
-}
-
-// #[repr(C)]
-// #[derive(Clone, Copy)]
-// pub struct AlvrVkImg {
-//     pub img: u64,
-//     pub view: u64,
-// }
-
-
-// #[repr(C)]
-// #[derive(Clone, Copy)]
-// pub struct AlvrVkExport {
-//     pub imgs: [AlvrVkImg; 3],
-//     pub semaphore: u64,
-// }
-
-#[no_mangle]
-pub unsafe extern "C" fn alvr_take_vulkan(info: *mut crate::AlvrVkExport) {
-    *info = crate::expt;
-}
-
 // Compositor target API:
 
 // This should reflect the client current framerate

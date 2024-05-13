@@ -2,7 +2,10 @@
 #include "alvr_server/Settings.h"
 #include "alvr_server/Logger.h"
 #include "alvr_server/bindings.h"
+
+extern "C" {
 #include "monado/bindings.h"
+}
 
 #include <fstream>
 #include <filesystem>

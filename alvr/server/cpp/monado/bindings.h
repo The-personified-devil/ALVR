@@ -1,10 +1,9 @@
 #pragma once
 
-#include <cstdint>
+#include <stdint.h>
 #include <pthread.h>
 #include <vulkan/vulkan.h>
 #include <vulkan/vulkan_core.h>
-// #include "../my_header.h"
 
 struct AlvrVkInfo {
 	VkInstance instance;
@@ -28,9 +27,11 @@ struct AlvrVkExport {
     uint64_t semaphore;
 };
 
-extern "C" AlvrVkExport expt;
+extern AlvrVkExport expt;
 
-extern "C" pthread_mutex_t* queue_mutex;
+extern pthread_mutex_t* queue_mutex;
+
+// TODO: Just fully extract the renderer cuz this will not export because rust is a bitch and I recall why I pushed stuff through rust before giving it right back to c++
 
 // TODO: This will explode lmao
 // Should we just give the entire thing to monado
@@ -38,6 +39,9 @@ struct CEncoder;
 
 // TODO: Just accept it, rewrite it even more and then integrate it into monado as a full render target
 // without these 500 extra weird middle steps
-extern "C" CEncoder* create_encoder(AlvrVkInfo* info);
-extern "C" void create_images(CEncoder);
-extern "C" void present(CEncoder, uint64_t frame, uint64_t timeline_value, uint32_t img_idx);
+extern struct CEncoder* create_encoder(struct AlvrVkInfo* info);
+// TODO: Just pass the create info from monado along here
+extern void create_images(struct CEncoder*);
+extern void present(struct CEncoder*, uint64_t frame, uint64_t timeline_value, uint32_t img_idx);
+
+extern void alvr_take_vulkan(struct AlvrVkExport*);

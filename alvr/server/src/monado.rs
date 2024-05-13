@@ -4,10 +4,8 @@ use crate::*;
 
 use alvr_common::log::{self, log};
 
-use crate::c_api::AlvrVkInfo;
-
 // TODO: Fully replace this with the thing from zarik
-pub fn monado_entry(info: *mut AlvrVkInfo) -> bool {
+pub fn monado_entry() -> bool {
     crate::init();
 
     unsafe {

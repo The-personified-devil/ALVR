@@ -29,15 +29,15 @@ extern "C" {
 #include "monado/bindings.h"
 }
 
-CEncoder* create_encoder(AlvrVkInfo* info) {
+extern "C" CEncoder* create_encoder(AlvrVkInfo* info) {
 	return new CEncoder(info->instance, info->physDev, info->device, info->queueFamIdx);
 }
 
-void create_images(CEncoder* enc) {
+extern "C" void create_images(CEncoder* enc) {
 	enc->InitImages();
 }
 
-void present(CEncoder* enc, uint64_t frame, uint64_t timeline_value, uint32_t img_idx) {
+extern "C" void present(CEncoder* enc, uint64_t frame, uint64_t timeline_value, uint32_t img_idx) {
 	enc->Present(frame, timeline_value, img_idx);
 }
 
