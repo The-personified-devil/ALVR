@@ -104,7 +104,7 @@ fn main() {
     #[cfg(feature = "gpl")]
     build.define("ALVR_GPL", None);
 
-    build.compile("bindings");
+    // build.compile("bindings");
 
     #[cfg(all(target_os = "linux", feature = "gpl"))]
     {
@@ -173,7 +173,7 @@ fn main() {
 
     bindgen::builder()
         .clang_arg("-xc++")
-        .header("cpp/alvr_server/bindings.h")
+        .header("bindings.h")
         .derive_default(true)
         .generate()
         .unwrap()

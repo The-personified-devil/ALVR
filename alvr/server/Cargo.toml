@@ -12,6 +12,7 @@ crate-type = ["cdylib"]
 [features]
 gpl = [] # Enable for FFmpeg support on Windows. Always enabled on Linux
 trace-performance = ["profiling/profile-with-tracy"]
+monado = []
 
 [dependencies]
 alvr_audio.workspace = true

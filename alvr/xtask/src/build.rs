@@ -144,9 +144,10 @@ pub fn build_streamer(
             .unwrap_or_default();
 
         let _push_guard = sh.push_dir(afs::crate_dir("server"));
+        // TODO: Unhack
         cmd!(
             sh,
-            "cargo build {common_flags_ref...} {gpl_flag...} {profiling_flag...}"
+            "cargo build {common_flags_ref...} {gpl_flag...} {profiling_flag...} --features monado"
         )
         .run()
         .unwrap();
@@ -203,51 +204,55 @@ pub fn build_streamer(
             }
         }
     } else if cfg!(target_os = "linux") {
-        // build compositor wrapper
-        let _push_guard = sh.push_dir(afs::crate_dir("vrcompositor_wrapper"));
-        cmd!(sh, "cargo build {common_flags_ref...}").run().unwrap();
-        sh.create_dir(&build_layout.vrcompositor_wrapper_dir)
-            .unwrap();
-        sh.copy_file(
-            artifacts_dir.join("alvr_vrcompositor_wrapper"),
-            build_layout.vrcompositor_wrapper(),
-        )
-        .unwrap();
-        sh.copy_file(
-            artifacts_dir.join("alvr_drm_lease_shim.so"),
-            build_layout.drm_lease_shim(),
-        )
-        .unwrap();
+        // TODO: Exclude for monado
 
-        // build vulkan layer
-        let _push_guard = sh.push_dir(afs::crate_dir("vulkan_layer"));
-        cmd!(sh, "cargo build {common_flags_ref...}").run().unwrap();
-        sh.create_dir(&build_layout.libraries_dir).unwrap();
-        sh.copy_file(
-            artifacts_dir.join(afs::dynlib_fname("alvr_vulkan_layer")),
-            build_layout.vulkan_layer(),
-        )
-        .unwrap();
+        // // build compositor wrapper
+        // let _push_guard = sh.push_dir(afs::crate_dir("vrcompositor_wrapper"));
+        // cmd!(sh, "cargo build {common_flags_ref...}").run().unwrap();
+        // sh.create_dir(&build_layout.vrcompositor_wrapper_dir)
+        //     .unwrap();
+        // sh.copy_file(
+        //     artifacts_dir.join("alvr_vrcompositor_wrapper"),
+        //     build_layout.vrcompositor_wrapper(),
+        // )
+        // .unwrap();
+        // sh.copy_file(
+        //     artifacts_dir.join("alvr_drm_lease_shim.so"),
+        //     build_layout.drm_lease_shim(),
+        // )
+        // .unwrap();
 
-        // copy vulkan layer manifest
-        sh.create_dir(&build_layout.vulkan_layer_manifest_dir)
-            .unwrap();
-        sh.copy_file(
-            afs::crate_dir("vulkan_layer").join("layer/alvr_x86_64.json"),
-            build_layout.vulkan_layer_manifest(),
-        )
-        .unwrap();
+        // // build vulkan layer
+        // let _push_guard = sh.push_dir(afs::crate_dir("vulkan_layer"));
+        // cmd!(sh, "cargo build {common_flags_ref...}").run().unwrap();
+        // sh.create_dir(&build_layout.libraries_dir).unwrap();
+        // sh.copy_file(
+        //     artifacts_dir.join(afs::dynlib_fname("alvr_vulkan_layer")),
+        //     build_layout.vulkan_layer(),
+        // )
+        // .unwrap();
 
-        let firewall_script = afs::crate_dir("xtask").join("firewall/alvr_fw_config.sh");
-        let firewalld = afs::crate_dir("xtask").join("firewall/alvr-firewalld.xml");
-        let ufw = afs::crate_dir("xtask").join("firewall/ufw-alvr");
+        // // copy vulkan layer manifest
+        // sh.create_dir(&build_layout.vulkan_layer_manifest_dir)
+        //     .unwrap();
+        // sh.copy_file(
+        //     afs::crate_dir("vulkan_layer").join("layer/alvr_x86_64.json"),
+        //     build_layout.vulkan_layer_manifest(),
+        // )
+        // .unwrap();
 
-        // copy linux specific firewalls
-        sh.copy_file(firewall_script, build_layout.firewall_script())
-            .unwrap();
-        sh.copy_file(firewalld, build_layout.firewalld_config())
-            .unwrap();
-        sh.copy_file(ufw, build_layout.ufw_config()).unwrap();
+        // TODO: This breaks if the previous stuff doesn't run
+
+        // let firewall_script = afs::crate_dir("xtask").join("firewall/alvr_fw_config.sh");
+        // let firewalld = afs::crate_dir("xtask").join("firewall/alvr-firewalld.xml");
+        // let ufw = afs::crate_dir("xtask").join("firewall/ufw-alvr");
+
+        // // copy linux specific firewalls
+        // sh.copy_file(firewall_script, build_layout.firewall_script())
+        //     .unwrap();
+        // sh.copy_file(firewalld, build_layout.firewalld_config())
+        //     .unwrap();
+        // sh.copy_file(ufw, build_layout.ufw_config()).unwrap();
     }
 
     // copy static resources
