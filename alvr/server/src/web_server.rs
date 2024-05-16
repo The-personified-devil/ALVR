@@ -133,7 +133,9 @@ async fn http_api(request: Request<Body>) -> Result<Response<Body>> {
                             alvr_events::send_event(EventType::AudioDevices(list));
                         }
                     }
+                    #[cfg(not(feature = "monado"))]
                     ServerRequest::CaptureFrame => unsafe { crate::CaptureFrame() },
+                    #[cfg(not(feature = "monado"))]
                     ServerRequest::InsertIdr => unsafe { crate::RequestIDR() },
                     ServerRequest::StartRecording => {
                         crate::create_recording_file(SERVER_DATA_MANAGER.read().settings())
@@ -175,6 +177,7 @@ async fn http_api(request: Request<Body>) -> Result<Response<Body>> {
                     ServerRequest::ShutdownSteamvr => EVENTS_QUEUE
                         .lock()
                         .push_back(ServerCoreEvent::ShutdownPending),
+                    _ =>{},
                 }
 
                 reply(StatusCode::OK)?
@@ -207,6 +210,7 @@ async fn http_api(request: Request<Body>) -> Result<Response<Body>> {
 
             let res = websocket(request, sender, protocol::Message::Binary).await?;
 
+            #[cfg(not(feature = "monado"))]
             unsafe { crate::RequestIDR() };
 
             res
@@ -229,6 +233,7 @@ async fn http_api(request: Request<Body>) -> Result<Response<Body>> {
                     },
                 };
 
+                #[cfg(not(feature = "monado"))]
                 unsafe { crate::SetButton(alvr_common::hash_string(&button.path), value) };
             }
 

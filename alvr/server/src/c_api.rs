@@ -257,6 +257,17 @@ pub extern "C" fn alvr_send_haptics(
     }
 }
 
+// TODO: Include view info
+#[no_mangle]
+pub extern "C" fn alvr_send_video(timestamp_ns: u64, buffer_ptr: *mut u8, len: i32, is_idr: bool) {
+    crate::connection::send_video(timestamp_ns, buffer_ptr, len, is_idr);
+}
+
+#[no_mangle]
+pub extern "C" fn alvr_send_video_header(buffer_ptr: *const u8, len: i32, codec: i32) {
+    crate::set_video_config_nals(buffer_ptr, len, codec);
+}
+
 #[no_mangle]
 pub unsafe extern "C" fn alvr_restart() {
     if let Some(context) = SERVER_CORE_CONTEXT.lock().take() {

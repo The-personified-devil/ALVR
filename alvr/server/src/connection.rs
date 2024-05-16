@@ -974,6 +974,7 @@ fn connection_pipeline(
                 if let Some(stats) = &mut *STATISTICS_MANAGER.lock() {
                     stats.report_tracking_received(tracking.target_timestamp);
 
+                    #[cfg(not(feature = "monado"))]
                     unsafe {
                         crate::SetTracking(
                             tracking.target_timestamp.as_nanos() as _,
@@ -1106,6 +1107,7 @@ fn connection_pipeline(
                 };
 
                 match packet {
+                    #[cfg(not(feature = "monado"))]
                     ClientControlPacket::PlayspaceSync(packet) => {
                         if !settings.headset.tracking_ref_only {
                             let data_manager_lock = SERVER_DATA_MANAGER.read();
@@ -1133,8 +1135,10 @@ fn connection_pipeline(
                                 .send(&ServerControlPacket::DecoderConfig(config))
                                 .ok();
                         }
+                        #[cfg(not(feature = "monado"))]
                         unsafe { crate::RequestIDR() }
                     }
+                    #[cfg(not(feature = "monado"))]
                     ClientControlPacket::VideoErrorReport => {
                         // legacy endpoint. todo: remove
                         if let Some(stats) = &mut *STATISTICS_MANAGER.lock() {
@@ -1142,6 +1146,7 @@ fn connection_pipeline(
                         }
                         unsafe { crate::VideoErrorReportReceive() };
                     }
+                    #[cfg(not(feature = "monado"))]
                     ClientControlPacket::ViewsConfig(config) => unsafe {
                         crate::SetViewsConfig(FfiViewsConfig {
                             fov: [
@@ -1161,6 +1166,7 @@ fn connection_pipeline(
                             ipd_m: config.ipd_m,
                         });
                     },
+                    #[cfg(not(feature = "monado"))]
                     ClientControlPacket::Battery(packet) => unsafe {
                         crate::SetBattery(packet.device_id, packet.gauge_value, packet.is_plugged);
 
@@ -1404,6 +1410,7 @@ pub extern "C" fn send_video(timestamp_ns: u64, buffer_ptr: *mut u8, len: i32, i
             .rolling_video_files
         {
             if Instant::now() > *LAST_IDR_INSTANT.lock() + Duration::from_secs(config.duration_s) {
+                #[cfg(not(feature = "monado"))]
                 unsafe { crate::RequestIDR() };
 
                 if is_idr {
@@ -1445,6 +1452,7 @@ pub extern "C" fn send_video(timestamp_ns: u64, buffer_ptr: *mut u8, len: i32, i
                 Err(TrySendError::Full(_))
             ) {
                 STREAM_CORRUPTED.store(true, Ordering::SeqCst);
+                #[cfg(not(feature = "monado"))]
                 unsafe { crate::RequestIDR() };
                 warn!("Dropping video packet. Reason: Can't push to network");
             }
@@ -1470,6 +1478,7 @@ fn detect_desync(game_latency: &Duration, last_resync: &mut Instant) {
         if now.saturating_duration_since(*last_resync).as_secs_f32() > 0.1 {
             *last_resync = now;
             warn!("Desync detected. Attempting recovery.");
+            #[cfg(not(feature = "monado"))]
             unsafe {
                 crate::RequestDriverResync();
             }

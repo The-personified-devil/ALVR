@@ -144,9 +144,10 @@ pub fn build_streamer(
             .unwrap_or_default();
 
         let _push_guard = sh.push_dir(afs::crate_dir("server"));
+        // TODO: Unhack
         cmd!(
             sh,
-            "cargo build {common_flags_ref...} {gpl_flag...} {profiling_flag...}"
+            "cargo build {common_flags_ref...} {gpl_flag...} {profiling_flag...} --features monado"
         )
         .run()
         .unwrap();

@@ -525,6 +525,7 @@ pub fn automatic_bindings(
     bindings
 }
 
+#[cfg(not(feature = "monado"))]
 pub extern "C" fn register_buttons(device_id: u64) {
     for id in &*REGISTERED_BUTTON_SET {
         if let Some(info) = BUTTON_INFO.get(id) {
@@ -660,6 +661,8 @@ impl ButtonMappingManager {
                         __bindgen_anon_1: crate::FfiButtonValue__bindgen_ty_1 { scalar: value },
                     },
                 };
+
+                #[cfg(not(feature = "monado"))]
                 unsafe { crate::SetButton(mapping.destination, destination_value) };
             }
         } else {

@@ -8,7 +8,10 @@ mod hand_gestures;
 mod haptics;
 mod input_mapping;
 mod logging_backend;
+
+#[cfg(not(feature = "monado"))]
 mod openvr;
+
 mod sockets;
 mod statistics;
 mod tracking;
@@ -21,6 +24,7 @@ mod web_server;
     non_snake_case,
     clippy::unseparated_literal_suffix
 )]
+
 mod bindings {
     include!(concat!(env!("OUT_DIR"), "/bindings.rs"));
 }
@@ -104,6 +108,7 @@ pub fn create_recording_file(settings: &Settings) {
 
             *VIDEO_RECORDING_FILE.lock() = Some(file);
 
+            #[cfg(not(feature = "monado"))]
             unsafe { RequestIDR() };
         }
         Err(e) => {
@@ -216,6 +221,7 @@ impl ServerCoreContext {
             runtime.spawn(async { alvr_common::show_err(web_server::web_server().await) });
         }
 
+        #[cfg(not(feature = "monado"))]
         unsafe {
             g_sessionPath = CString::new(FILESYSTEM_LAYOUT.session().to_string_lossy().to_string())
                 .unwrap()
@@ -230,8 +236,11 @@ impl ServerCoreContext {
             .into_raw();
         };
 
-        graphics::initialize_shaders();
+        // TODO: Not needed for monado (but could also just keep)
 
+        // graphics::initialize_shaders();
+
+        #[cfg(not(feature = "monado"))]
         unsafe {
             LogError = Some(c_api::alvr_log_error);
             LogWarn = Some(c_api::alvr_log_warn);

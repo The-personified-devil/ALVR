@@ -378,6 +378,7 @@ pub fn video_decoder_split(
                 Arc::clone(&image_queue),
                 &mut image_reader,
             ) {
+                error!("{}", e);
                 *error.lock() = Some(e);
             }
 
