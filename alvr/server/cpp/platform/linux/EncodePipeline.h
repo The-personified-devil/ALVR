@@ -1,9 +1,10 @@
 #pragma once
 #include <cstdint>
 #include <memory>
-#include <vector>
-#include <vulkan/vulkan_core.h>
+
 #include "alvr_server/bindings.h"
+
+#include "VkContext.hpp"
 
 extern "C" struct AVCodecContext;
 extern "C" struct AVPacket;
@@ -34,13 +35,14 @@ public:
 
   virtual ~EncodePipeline();
 
-  virtual void PushFrame(VkImage *pTexture, uint64_t presentationTime, uint64_t targetTimestampNs, bool idr) = 0; // Linux version of VideoEncoder::Transmit
+  virtual void PushFrame(uint64_t targetTimestampNs, bool idr) = 0;
   virtual bool GetEncoded(FramePacket &data);
   virtual Timestamp GetTimestamp() { return timestamp; }
   virtual int GetCodec();
 
   virtual void SetParams(FfiDynamicEncoderParams params);
-  static std::unique_ptr<EncodePipeline> Create(Renderer *render, VkContext &vk_ctx, VkFrame &input_frame, VkFrameCtx &vk_frame_ctx, uint32_t width, uint32_t height);
+  static std::unique_ptr<EncodePipeline> Create(alvr::VkContext &vk_ctx, std::string devicePath, VkFrame &input_frame, /* VkFrameCtx &vk_frame_ctx,  */uint32_t width, uint32_t height);
+
 protected:
   AVCodecContext *encoder_ctx = nullptr; //shall be initialized by child class
   AVPacket *encoder_packet = NULL;
